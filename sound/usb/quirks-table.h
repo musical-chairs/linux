@@ -1953,6 +1953,19 @@ YAMAHA_DEVICE(0x7010, "UB99"),
 		}
 	}
 },
+/* this catches most recent vendor-specific Roland devices */
+{
+	.match_flags = USB_DEVICE_ID_MATCH_VENDOR |
+	               USB_DEVICE_ID_MATCH_INT_CLASS |
+		       USB_DEVICE_ID_MATCH_INT_SUBCLASS,
+	.idVendor = 0x0582,
+	.bInterfaceClass    = USB_CLASS_VENDOR_SPEC,
+	.bInterfaceSubClass = USB_SUBCLASS_MIDISTREAMING,
+	.driver_info = (unsigned long) &(const struct snd_usb_audio_quirk) {
+		.ifnum = QUIRK_ANY_INTERFACE,
+		.type = QUIRK_MIDI_ROLAND
+	}
+},
 
 /* Guillemot devices */
 {
