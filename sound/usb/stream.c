@@ -507,6 +507,16 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 		if (snd_usb_apply_interface_quirk(chip, iface_no, altno))
 			continue;
 
+		/*
+		 * Roland audio streaming interfaces are marked with protocols
+		 * 0/1/2, but are UAC 1 compatible.
+		 */
+		if (USB_ID_VENDOR(chip->usb_id) == 0x0582 &&
+		    altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC &&
+		    altsd->bInterfaceSubClass == USB_SUBCLASS_AUDIOSTREAMING &&
+		    protocol <= 2)
+			protocol = UAC_VERSION_1;
+
 		chconfig = 0;
 		/* get audio formats */
 		switch (protocol) {

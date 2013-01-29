@@ -173,6 +173,59 @@ static int create_fixed_stream_quirk(struct snd_usb_audio *chip,
 	return 0;
 }
 
+static int create_roland_audio_quirk(struct snd_usb_audio *chip,
+				     struct usb_interface *iface,
+				     struct usb_driver *driver,
+				     const struct snd_usb_audio_quirk *quirk)
+{
+	struct usb_host_interface *alts;
+	struct usb_interface_descriptor *altsd;
+	struct usb_endpoint_descriptor *epd;
+
+	/*
+	 * Most Roland audio streaming interfaces have more or less standard
+	 * descriptors, but older devices might lack descriptors, and future
+	 * ones might change, so ensure that we fail silently if the interface
+	 * doesn't look exactly right.
+	 */
+
+	/* must have a non-zero altsetting for streaming */
+	if (iface->num_altsetting < 2)
+		return -ENODEV;
+	alts = &iface->altsetting[1];
+	altsd = get_iface_desc(alts);
+
+	/* must have an isochronous endpoint for streaming */
+	if (altsd->bNumEndpoints < 1)
+		return -ENODEV;
+	epd = get_endpoint(alts, 0);
+	if (!usb_endpoint_xfer_isoc(epd))
+		return -ENODEV;
+
+	/* must be correctly marked as input/output */
+	switch (altsd->bInterfaceProtocol) {
+	case 0:
+		break;
+	case 1:
+		if (!usb_endpoint_dir_in(epd))
+			return -ENODEV;
+		break;
+	case 2:
+		if (!usb_endpoint_dir_out(epd))
+			return -ENODEV;
+		break;
+	default:
+		return -ENODEV;
+	}
+
+	/* must have format descriptors */
+	if (!snd_usb_find_csint_desc(alts->extra, alts->extralen, NULL,
+				     UAC_FORMAT_TYPE))
+		return -ENODEV;
+
+	return create_standard_audio_quirk(chip, iface, driver, NULL);
+}
+
 /*
  * Create a stream for an Edirol UA-700/UA-25/UA-4FX interface.  
  * The only way to detect the sample rate is by looking at wMaxPacketSize.
@@ -314,6 +367,7 @@ int snd_usb_create_quirk(struct snd_usb_audio *chip,
 		[QUIRK_MIDI_FTDI] = create_any_midi_quirk,
 		[QUIRK_AUDIO_STANDARD_INTERFACE] = create_standard_audio_quirk,
 		[QUIRK_AUDIO_FIXED_ENDPOINT] = create_fixed_stream_quirk,
+		[QUIRK_AUDIO_ROLAND] = create_roland_audio_quirk,
 		[QUIRK_AUDIO_EDIROL_UAXX] = create_uaxx_quirk,
 		[QUIRK_AUDIO_ALIGN_TRANSFER] = create_align_transfer_quirk,
 		[QUIRK_AUDIO_STANDARD_MIXER] = create_standard_mixer_quirk,
