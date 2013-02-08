@@ -202,20 +202,22 @@ static int create_roland_audio_quirk(struct snd_usb_audio *chip,
 	if (!usb_endpoint_xfer_isoc(epd))
 		return -ENODEV;
 
-	/* must be correctly marked as input/output */
-	switch (altsd->bInterfaceProtocol) {
-	case 0:
-		break;
-	case 1:
-		if (!usb_endpoint_dir_in(epd))
+	if (altsd->bInterfaceSubClass == 2) {
+		/* must be correctly marked as input/output */
+		switch (altsd->bInterfaceProtocol) {
+		case 0:
+			break;
+		case 1:
+			if (!usb_endpoint_dir_in(epd))
+				return -ENODEV;
+			break;
+		case 2:
+			if (!usb_endpoint_dir_out(epd))
+				return -ENODEV;
+			break;
+		default:
 			return -ENODEV;
-		break;
-	case 2:
-		if (!usb_endpoint_dir_out(epd))
-			return -ENODEV;
-		break;
-	default:
-		return -ENODEV;
+		}
 	}
 
 	/* must have format descriptors */

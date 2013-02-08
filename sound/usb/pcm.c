@@ -296,6 +296,7 @@ static int deactivate_endpoints(struct snd_usb_substream *subs)
 }
 
 static int search_roland_implicit_fb(struct usb_device *dev, int ifnum,
+				     unsigned int altsetting,
 				     struct usb_host_interface **alts,
 				     unsigned int *ep)
 {
@@ -304,13 +305,14 @@ static int search_roland_implicit_fb(struct usb_device *dev, int ifnum,
 	struct usb_endpoint_descriptor *epd;
 
 	iface = usb_ifnum_to_if(dev, ifnum);
-	if (!iface || iface->num_altsetting < 2)
+	if (!iface || iface->num_altsetting < altsetting + 1)
 		return -ENOENT;
-	*alts = &iface->altsetting[1];
+	*alts = &iface->altsetting[altsetting];
 	altsd = get_iface_desc(*alts);
-	if (altsd->bInterfaceClass != USB_CLASS_VENDOR_SPEC ||
-	    altsd->bInterfaceSubClass != 2 ||
-	    altsd->bInterfaceProtocol != 1 ||
+	if (altsd->bAlternateSetting != altsetting ||
+	    altsd->bInterfaceClass != USB_CLASS_VENDOR_SPEC ||
+	    (altsd->bInterfaceSubClass != 2 &&
+	     altsd->bInterfaceProtocol != 2   ) ||
 	    altsd->bNumEndpoints < 1)
 		return -ENOENT;
 	epd = get_endpoint(*alts, 0);
@@ -417,11 +419,11 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 	if (is_playback &&
 	    attr == USB_ENDPOINT_SYNC_ASYNC &&
 	    altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC &&
-	    altsd->bInterfaceSubClass == 2 &&
 	    altsd->bInterfaceProtocol == 2 &&
 	    altsd->bNumEndpoints == 1 &&
 	    USB_ID_VENDOR(subs->stream->chip->usb_id) == 0x0582 /* Roland */ &&
 	    search_roland_implicit_fb(dev, altsd->bInterfaceNumber + 1,
+				      altsd->bAlternateSetting,
 				      &alts, &ep) >= 0) {
 		implicit_fb = 1;
 		goto add_sync_ep;
