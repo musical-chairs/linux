@@ -513,7 +513,8 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 		 */
 		if (USB_ID_VENDOR(chip->usb_id) == 0x0582 &&
 		    altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC &&
-		    altsd->bInterfaceSubClass == USB_SUBCLASS_AUDIOSTREAMING &&
+		    (altsd->bInterfaceSubClass == 1 ||
+		     altsd->bInterfaceSubClass == 2) &&
 		    protocol <= 2)
 			protocol = UAC_VERSION_1;
 
