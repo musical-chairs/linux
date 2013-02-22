@@ -488,10 +488,10 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 		altsd = get_iface_desc(alts);
 		protocol = altsd->bInterfaceProtocol;
 		/* skip invalid one */
-		if ((altsd->bInterfaceClass != USB_CLASS_AUDIO &&
-		     altsd->bInterfaceClass != USB_CLASS_VENDOR_SPEC) ||
-		    (altsd->bInterfaceSubClass != USB_SUBCLASS_AUDIOSTREAMING &&
-		     altsd->bInterfaceSubClass != USB_SUBCLASS_VENDOR_SPEC) ||
+		if (((altsd->bInterfaceClass != USB_CLASS_AUDIO ||
+		      (altsd->bInterfaceSubClass != USB_SUBCLASS_AUDIOSTREAMING &&
+		       altsd->bInterfaceSubClass != USB_SUBCLASS_VENDOR_SPEC)) &&
+		    altsd->bInterfaceClass != USB_CLASS_VENDOR_SPEC) ||
 		    altsd->bNumEndpoints < 1 ||
 		    le16_to_cpu(get_endpoint(alts, 0)->wMaxPacketSize) == 0)
 			continue;
