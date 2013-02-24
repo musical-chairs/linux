@@ -190,23 +190,17 @@ static int create_roland_audio_quirk(struct snd_usb_audio *chip,
 	 */
 
 	/* must have a non-zero altsetting for streaming */
-	if (iface->num_altsetting < 2) {
-		dev_err(&iface->dev, "<2 altsettings\n");
+	if (iface->num_altsetting < 2)
 		return -ENODEV;
-	}
 	alts = &iface->altsetting[1];
 	altsd = get_iface_desc(alts);
 
 	/* must have an isochronous endpoint for streaming */
-	if (altsd->bNumEndpoints < 1) {
-		dev_err(&iface->dev, "not endpoint\n");
+	if (altsd->bNumEndpoints < 1)
 		return -ENODEV;
-	}
 	epd = get_endpoint(alts, 0);
-	if (!usb_endpoint_xfer_isoc(epd)) {
-		dev_err(&iface->dev, "ep not iso\n");
+	if (!usb_endpoint_xfer_isoc(epd))
 		return -ENODEV;
-	}
 
 	if (altsd->bInterfaceSubClass == 2) {
 		/* must be correctly marked as input/output */
@@ -214,16 +208,12 @@ static int create_roland_audio_quirk(struct snd_usb_audio *chip,
 		case 0:
 			break;
 		case 1:
-			if (!usb_endpoint_dir_in(epd)) {
-				dev_err(&iface->dev, "ep not input\n");
+			if (!usb_endpoint_dir_in(epd))
 				return -ENODEV;
-			}
 			break;
 		case 2:
-			if (!usb_endpoint_dir_out(epd)) {
-				dev_err(&iface->dev, "ep not output\n");
+			if (!usb_endpoint_dir_out(epd))
 				return -ENODEV;
-			}
 			break;
 		default:
 			return -ENODEV;
@@ -232,10 +222,8 @@ static int create_roland_audio_quirk(struct snd_usb_audio *chip,
 
 	/* must have format descriptors */
 	if (!snd_usb_find_csint_desc(alts->extra, alts->extralen, NULL,
-				     UAC_FORMAT_TYPE)) {
-		dev_err(&iface->dev, "not format type descriptor\n");
+				     UAC_FORMAT_TYPE))
 		return -ENODEV;
-	}
 
 	return create_standard_audio_quirk(chip, iface, driver, NULL);
 }

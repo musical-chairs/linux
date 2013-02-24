@@ -473,7 +473,6 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 
 	/* parse the interface's altsettings */
 	iface = usb_ifnum_to_if(dev, iface_no);
-	dev_info(&iface->dev, "snd_usb_parse_audio_interface\n");
 
 	num = iface->num_altsetting;
 
@@ -488,7 +487,6 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 		alts = &iface->altsetting[i];
 		altsd = get_iface_desc(alts);
 		protocol = altsd->bInterfaceProtocol;
-		dev_info(&iface->dev, "altsetting %u\n", altsd->bAlternateSetting);
 		/* skip invalid one */
 		if (((altsd->bInterfaceClass != USB_CLASS_AUDIO ||
 		      (altsd->bInterfaceSubClass != USB_SUBCLASS_AUDIOSTREAMING &&
@@ -497,12 +495,10 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 		    altsd->bNumEndpoints < 1 ||
 		    le16_to_cpu(get_endpoint(alts, 0)->wMaxPacketSize) == 0)
 			continue;
-		dev_info(&iface->dev, "step 1\n");
 		/* must be isochronous */
 		if ((get_endpoint(alts, 0)->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) !=
 		    USB_ENDPOINT_XFER_ISOC)
 			continue;
-		dev_info(&iface->dev, "step 2\n");
 		/* check direction */
 		stream = (get_endpoint(alts, 0)->bEndpointAddress & USB_DIR_IN) ?
 			SNDRV_PCM_STREAM_CAPTURE : SNDRV_PCM_STREAM_PLAYBACK;
@@ -510,7 +506,6 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 
 		if (snd_usb_apply_interface_quirk(chip, iface_no, altno))
 			continue;
-		dev_info(&iface->dev, "step 3\n");
 
 		/*
 		 * Roland audio streaming interfaces are marked with protocols
@@ -686,7 +681,6 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 				fp->ep_attr |= USB_ENDPOINT_SYNC_SYNC;
 			break;
 		}
-		dev_info(&iface->dev, "step 4\n");
 
 		/* ok, let's parse further... */
 		if (snd_usb_parse_audio_format(chip, fp, format, fmt, stream) < 0) {
