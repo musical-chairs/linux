@@ -491,7 +491,7 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 		if (((altsd->bInterfaceClass != USB_CLASS_AUDIO ||
 		      (altsd->bInterfaceSubClass != USB_SUBCLASS_AUDIOSTREAMING &&
 		       altsd->bInterfaceSubClass != USB_SUBCLASS_VENDOR_SPEC)) &&
-		    altsd->bInterfaceClass != USB_CLASS_VENDOR_SPEC) ||
+		     altsd->bInterfaceClass != USB_CLASS_VENDOR_SPEC) ||
 		    altsd->bNumEndpoints < 1 ||
 		    le16_to_cpu(get_endpoint(alts, 0)->wMaxPacketSize) == 0)
 			continue;
@@ -513,8 +513,6 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 		 */
 		if (USB_ID_VENDOR(chip->usb_id) == 0x0582 &&
 		    altsd->bInterfaceClass == USB_CLASS_VENDOR_SPEC &&
-		    (altsd->bInterfaceSubClass == 1 ||
-		     altsd->bInterfaceSubClass == 2) &&
 		    protocol <= 2)
 			protocol = UAC_VERSION_1;
 
@@ -699,10 +697,6 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 			kfree(fp);
 			return err;
 		}
-		/* try to set the interface... */
-		usb_set_interface(chip->dev, iface_no, altno);
-		snd_usb_init_pitch(chip, iface_no, alts, fp);
-		snd_usb_init_sample_rate(chip, iface_no, alts, fp, fp->rate_max);
 	}
 	return 0;
 }

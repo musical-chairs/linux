@@ -254,13 +254,9 @@ static int start_endpoints(struct snd_usb_substream *subs, bool can_sleep)
 					   subs->sync_endpoint->alt_idx, err);
 				return -EIO;
 			}
-			printk(KERN_INFO "%d:%d: set altsetting %d\n",
-			       subs->dev->devnum,
-			       subs->sync_endpoint->iface,
-			       subs->sync_endpoint->alt_idx);
 		}
 
-		printk(KERN_INFO "Starting sync EP @%p\n", ep);
+		snd_printdd(KERN_DEBUG "Starting sync EP @%p\n", ep);
 
 		ep->sync_slave = subs->data_endpoint;
 		err = snd_usb_endpoint_start(ep, can_sleep);
@@ -516,12 +512,12 @@ static int match_endpoint_audioformats(struct audioformat *fp,
 	int score = 0;
 
 	if (fp->channels < 1) {
-		printk(KERN_INFO "%s: (fmt @%p) no channels\n", __func__, fp);
+		snd_printdd("%s: (fmt @%p) no channels\n", __func__, fp);
 		return 0;
 	}
 
 	if (!(fp->formats & (1ULL << pcm_format))) {
-		printk(KERN_INFO "%s: (fmt @%p) no match for format %d\n", __func__,
+		snd_printdd("%s: (fmt @%p) no match for format %d\n", __func__,
 			fp, pcm_format);
 		return 0;
 	}
@@ -533,7 +529,7 @@ static int match_endpoint_audioformats(struct audioformat *fp,
 		}
 	}
 	if (!score) {
-		printk(KERN_INFO "%s: (fmt @%p) no match for rate %d\n", __func__,
+		snd_printdd("%s: (fmt @%p) no match for rate %d\n", __func__,
 			fp, rate);
 		return 0;
 	}
@@ -541,7 +537,7 @@ static int match_endpoint_audioformats(struct audioformat *fp,
 	if (fp->channels == match->channels)
 		score++;
 
-	printk(KERN_INFO "%s: (fmt @%p) score %d\n", __func__, fp, score);
+	snd_printdd("%s: (fmt @%p) score %d\n", __func__, fp, score);
 
 	return score;
 }
@@ -1223,9 +1219,7 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 		if (!subs->txfr_quirk)
 			bytes = frames * stride;
 		if (bytes % (runtime->sample_bits >> 3) != 0) {
-#ifdef CONFIG_SND_DEBUG_VERBOSE
 			int oldbytes = bytes;
-#endif
 			bytes = frames * stride;
 			snd_printdd(KERN_ERR "Corrected urb data len. %d->%d\n",
 							oldbytes, bytes);
