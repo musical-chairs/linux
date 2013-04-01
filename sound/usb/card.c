@@ -532,6 +532,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 	chip->probing = 0;
 	usb_set_intfdata(intf, chip);
 	mutex_unlock(&register_mutex);
+	printk(KERN_ERR "intf %d: registered\n", ifnum);
 	return 0;
 
  __error:
@@ -542,6 +543,7 @@ static int usb_audio_probe(struct usb_interface *intf,
 	}
 	mutex_unlock(&register_mutex);
  __err_val:
+	printk(KERN_ERR "intf %d: failed: %d\n", ifnum, err);
 	return err;
 }
 
@@ -710,7 +712,7 @@ static int __init snd_usb_audio_init(void)
 		printk(KERN_WARNING "invalid nrpacks value.\n");
 		return -EINVAL;
 	}
-	printk(KERN_INFO "usb-audio debug test 4\n");
+	printk(KERN_INFO "usb-audio debug test 5\n");
 	return usb_register(&usb_audio_driver);
 }
 
