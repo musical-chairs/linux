@@ -59,7 +59,12 @@ snd_pcm_uframes_t snd_usb_pcm_delay(struct snd_usb_substream *subs,
 
 	/* Approximation based on number of samples per USB frame (ms),
 	   some truncation for 44.1 but the estimate is good enough */
-	est_delay =  subs->last_delay - (frame_diff * rate / 1000);
+	est_delay =  frame_diff * rate / 1000;
+	if (subs->direction == SNDRV_PCM_STREAM_PLAYBACK)
+		est_delay = subs->last_delay - est_delay;
+	else
+		est_delay = subs->last_delay + est_delay;
+
 	if (est_delay < 0)
 		est_delay = 0;
 	return est_delay;
@@ -78,8 +83,7 @@ static snd_pcm_uframes_t snd_usb_pcm_pointer(struct snd_pcm_substream *substream
 		return SNDRV_PCM_POS_XRUN;
 	spin_lock(&subs->lock);
 	hwptr_done = subs->hwptr_done;
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		substream->runtime->delay = snd_usb_pcm_delay(subs,
+	substream->runtime->delay = snd_usb_pcm_delay(subs,
 						substream->runtime->rate);
 	spin_unlock(&subs->lock);
 	return hwptr_done / (substream->runtime->frame_bits >> 3);
@@ -250,13 +254,9 @@ static int start_endpoints(struct snd_usb_substream *subs, bool can_sleep)
 					   subs->sync_endpoint->alt_idx, err);
 				return -EIO;
 			}
-			printk(KERN_INFO "%d:%d: set altsetting %d\n",
-			       subs->dev->devnum,
-			       subs->sync_endpoint->iface,
-			       subs->sync_endpoint->alt_idx);
 		}
 
-		printk(KERN_INFO "Starting sync EP @%p\n", ep);
+		snd_printdd(KERN_DEBUG "Starting sync EP @%p\n", ep);
 
 		ep->sync_slave = subs->data_endpoint;
 		err = snd_usb_endpoint_start(ep, can_sleep);
@@ -394,6 +394,7 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 
 	switch (subs->stream->chip->usb_id) {
 	case USB_ID(0x0763, 0x2030): /* M-Audio Fast Track C400 */
+	case USB_ID(0x0763, 0x2031): /* M-Audio Fast Track C600 */
 		if (is_playback) {
 			implicit_fb = 1;
 			ep = 0x81;
@@ -511,12 +512,12 @@ static int match_endpoint_audioformats(struct audioformat *fp,
 	int score = 0;
 
 	if (fp->channels < 1) {
-		printk(KERN_INFO "%s: (fmt @%p) no channels\n", __func__, fp);
+		snd_printdd("%s: (fmt @%p) no channels\n", __func__, fp);
 		return 0;
 	}
 
 	if (!(fp->formats & (1ULL << pcm_format))) {
-		printk(KERN_INFO "%s: (fmt @%p) no match for format %d\n", __func__,
+		snd_printdd("%s: (fmt @%p) no match for format %d\n", __func__,
 			fp, pcm_format);
 		return 0;
 	}
@@ -528,7 +529,7 @@ static int match_endpoint_audioformats(struct audioformat *fp,
 		}
 	}
 	if (!score) {
-		printk(KERN_INFO "%s: (fmt @%p) no match for rate %d\n", __func__,
+		snd_printdd("%s: (fmt @%p) no match for rate %d\n", __func__,
 			fp, rate);
 		return 0;
 	}
@@ -536,7 +537,7 @@ static int match_endpoint_audioformats(struct audioformat *fp,
 	if (fp->channels == match->channels)
 		score++;
 
-	printk(KERN_INFO "%s: (fmt @%p) score %d\n", __func__, fp, score);
+	snd_printdd("%s: (fmt @%p) score %d\n", __func__, fp, score);
 
 	return score;
 }
@@ -1200,6 +1201,10 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 	int i, period_elapsed = 0;
 	unsigned long flags;
 	unsigned char *cp;
+	int current_frame_number;
+
+	/* read frame number here, update pointer in critical section */
+	current_frame_number = usb_get_current_frame_number(subs->dev);
 
 	stride = runtime->frame_bits >> 3;
 
@@ -1214,9 +1219,7 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 		if (!subs->txfr_quirk)
 			bytes = frames * stride;
 		if (bytes % (runtime->sample_bits >> 3) != 0) {
-#ifdef CONFIG_SND_DEBUG_VERBOSE
 			int oldbytes = bytes;
-#endif
 			bytes = frames * stride;
 			snd_printdd(KERN_ERR "Corrected urb data len. %d->%d\n",
 							oldbytes, bytes);
@@ -1233,6 +1236,15 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 			subs->transfer_done -= runtime->period_size;
 			period_elapsed = 1;
 		}
+		/* capture delay is by construction limited to one URB,
+		 * reset delays here
+		 */
+		runtime->delay = subs->last_delay = 0;
+
+		/* realign last_frame_number */
+		subs->last_frame_number = current_frame_number;
+		subs->last_frame_number &= 0xFF; /* keep 8 LSBs */
+
 		spin_unlock_irqrestore(&subs->lock, flags);
 		/* copy a data chunk */
 		if (oldptr + bytes > runtime->buffer_size * stride) {

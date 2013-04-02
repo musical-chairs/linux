@@ -431,11 +431,10 @@ static int snd_usb_audio_create(struct usb_device *dev, int idx,
  * only at the first time.  the successive calls of this function will
  * append the pcm interface to the corresponding card.
  */
-static struct snd_usb_audio *
-snd_usb_audio_probe(struct usb_device *dev,
-		    struct usb_interface *intf,
-		    const struct usb_device_id *usb_id)
+static int usb_audio_probe(struct usb_interface *intf,
+			   const struct usb_device_id *usb_id)
 {
+	struct usb_device *dev = interface_to_usbdev(intf);
 	const struct snd_usb_audio_quirk *quirk = (const struct snd_usb_audio_quirk *)usb_id->driver_info;
 	int i, err;
 	struct snd_usb_audio *chip;
@@ -447,10 +446,13 @@ snd_usb_audio_probe(struct usb_device *dev,
 	ifnum = get_iface_desc(alts)->bInterfaceNumber;
 	id = USB_ID(le16_to_cpu(dev->descriptor.idVendor),
 		    le16_to_cpu(dev->descriptor.idProduct));
-	if (quirk && quirk->ifnum >= 0 && ifnum != quirk->ifnum)
+	if (quirk && quirk->ifnum >= 0 && ifnum != quirk->ifnum) {
+		err = -ENODEV;
 		goto __err_val;
+	}
 
-	if (snd_usb_apply_boot_quirk(dev, intf, quirk) < 0)
+	err = snd_usb_apply_boot_quirk(dev, intf, quirk);
+	if (err < 0)
 		goto __err_val;
 
 	/*
@@ -464,6 +466,7 @@ snd_usb_audio_probe(struct usb_device *dev,
 		if (usb_chip[i] && usb_chip[i]->dev == dev) {
 			if (usb_chip[i]->shutdown) {
 				snd_printk(KERN_ERR "USB device is in the shutdown state, cannot create a card instance\n");
+				err = -ESHUTDOWN;
 				goto __error;
 			}
 			chip = usb_chip[i];
@@ -479,15 +482,16 @@ snd_usb_audio_probe(struct usb_device *dev,
 			if (enable[i] && ! usb_chip[i] &&
 			    (vid[i] == -1 || vid[i] == USB_ID_VENDOR(id)) &&
 			    (pid[i] == -1 || pid[i] == USB_ID_PRODUCT(id))) {
-				if (snd_usb_audio_create(dev, i, quirk, &chip) < 0) {
+				err = snd_usb_audio_create(dev, i, quirk, &chip);
+				if (err < 0)
 					goto __error;
-				}
 				snd_card_set_dev(chip->card, &intf->dev);
 				chip->pm_intf = intf;
 				break;
 			}
 		if (!chip) {
 			printk(KERN_ERR "no available usb audio device\n");
+			err = -EBUSY;
 			goto __error;
 		}
 	}
@@ -510,22 +514,26 @@ snd_usb_audio_probe(struct usb_device *dev,
 
 	if (err > 0) {
 		/* create normal USB audio interfaces */
-		if (snd_usb_create_streams(chip, ifnum) < 0 ||
-		    snd_usb_create_mixer(chip, ifnum, ignore_ctl_error) < 0) {
+		err = snd_usb_create_streams(chip, ifnum);
+		if (err < 0)
 			goto __error;
-		}
+		err = snd_usb_create_mixer(chip, ifnum, ignore_ctl_error);
+		if (err < 0)
+			goto __error;
 	}
 
 	/* we are allowed to call snd_card_register() many times */
-	if (snd_card_register(chip->card) < 0) {
+	err = snd_card_register(chip->card);
+	if (err < 0)
 		goto __error;
-	}
 
 	usb_chip[chip->index] = chip;
 	chip->num_interfaces++;
 	chip->probing = 0;
+	usb_set_intfdata(intf, chip);
 	mutex_unlock(&register_mutex);
-	return chip;
+	printk(KERN_ERR "intf %d: registered\n", ifnum);
+	return 0;
 
  __error:
 	if (chip) {
@@ -535,16 +543,17 @@ snd_usb_audio_probe(struct usb_device *dev,
 	}
 	mutex_unlock(&register_mutex);
  __err_val:
-	return NULL;
+	printk(KERN_ERR "intf %d: failed: %d\n", ifnum, err);
+	return err;
 }
 
 /*
  * we need to take care of counter, since disconnection can be called also
  * many times as well as usb_audio_probe().
  */
-static void snd_usb_audio_disconnect(struct usb_device *dev,
-				     struct snd_usb_audio *chip)
+static void usb_audio_disconnect(struct usb_interface *intf)
 {
+	struct snd_usb_audio *chip = usb_get_intfdata(intf);
 	struct snd_card *card;
 	struct list_head *p, *n;
 
@@ -582,27 +591,6 @@ static void snd_usb_audio_disconnect(struct usb_device *dev,
 	} else {
 		mutex_unlock(&register_mutex);
 	}
-}
-
-/*
- * new 2.5 USB kernel API
- */
-static int usb_audio_probe(struct usb_interface *intf,
-			   const struct usb_device_id *id)
-{
-	struct snd_usb_audio *chip;
-	chip = snd_usb_audio_probe(interface_to_usbdev(intf), intf, id);
-	if (chip) {
-		usb_set_intfdata(intf, chip);
-		return 0;
-	} else
-		return -EIO;
-}
-
-static void usb_audio_disconnect(struct usb_interface *intf)
-{
-	snd_usb_audio_disconnect(interface_to_usbdev(intf),
-				 usb_get_intfdata(intf));
 }
 
 #ifdef CONFIG_PM
@@ -646,7 +634,7 @@ static int usb_audio_suspend(struct usb_interface *intf, pm_message_t message)
 				as->substream[0].need_setup_ep =
 					as->substream[1].need_setup_ep = true;
 			}
- 		}
+		}
 	} else {
 		/*
 		 * otherwise we keep the rest of the system in the dark
@@ -724,7 +712,7 @@ static int __init snd_usb_audio_init(void)
 		printk(KERN_WARNING "invalid nrpacks value.\n");
 		return -EINVAL;
 	}
-	printk(KERN_INFO "usb-audio debug test 3\n");
+	printk(KERN_INFO "usb-audio debug test 5\n");
 	return usb_register(&usb_audio_driver);
 }
 
