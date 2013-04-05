@@ -657,9 +657,7 @@ void snd_hda_apply_fixup(struct hda_codec *codec, int action)
 {
 	struct hda_gen_spec *spec = codec->spec;
 	int id = spec->fixup_id;
-#ifdef CONFIG_SND_DEBUG_VERBOSE
 	const char *modelname = spec->fixup_name;
-#endif
 	int depth = 0;
 
 	if (!spec->fixup_list)
