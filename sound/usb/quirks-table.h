@@ -1488,7 +1488,7 @@ YAMAHA_DEVICE(0x7010, "UB99"),
 {
 	/*
 	 * It is not known how to do proper clock switching, so this forces the
-	 * device to always use 48 kHz.
+	 * device to always use 44.1 kHz.
 	 */
 	USB_DEVICE(0x0582, 0x012f),
 	.driver_info = (unsigned long) & (const struct snd_usb_audio_quirk) {
@@ -1504,13 +1504,15 @@ YAMAHA_DEVICE(0x7010, "UB99"),
 					.formats = SNDRV_PCM_FMTBIT_S32_LE,
 					.channels = 4,
 					.iface = 0,
-					.altsetting = 2,
-					.altset_idx = 2,
+					.altsetting = 1,
+					.altset_idx = 1,
 					.endpoint = 0x05,
 					.ep_attr = 0x05,
-					.rates = SNDRV_PCM_RATE_CONTINUOUS,
-					.rate_min = 48000,
-					.rate_max = 48000,
+					.rates = SNDRV_PCM_RATE_44100,
+					.rate_min = 44100,
+					.rate_max = 44100,
+					.nr_rates = 1,
+					.rate_table = (unsigned int[]) { 44100 }
 				}
 			},
 			{
@@ -1520,13 +1522,15 @@ YAMAHA_DEVICE(0x7010, "UB99"),
 					.formats = SNDRV_PCM_FMTBIT_S32_LE,
 					.channels = 6,
 					.iface = 1,
-					.altsetting = 2,
-					.altset_idx = 2,
+					.altsetting = 1,
+					.altset_idx = 1,
 					.endpoint = 0x85,
 					.ep_attr = 0x25,
-					.rates = SNDRV_PCM_RATE_CONTINUOUS,
-					.rate_min = 48000,
-					.rate_max = 48000,
+					.rates = SNDRV_PCM_RATE_44100,
+					.rate_min = 44100,
+					.rate_max = 44100,
+					.nr_rates = 1,
+					.rate_table = (unsigned int[]) { 44100 }
 				}
 			},
 			{
