@@ -710,7 +710,7 @@ static int __init snd_usb_audio_init(void)
 		printk(KERN_WARNING "invalid nrpacks value.\n");
 		return -EINVAL;
 	}
-	printk(KERN_INFO "usb-audio debug test 6\n");
+	printk(KERN_INFO "usb-audio debug test 8\n");
 	return usb_register(&usb_audio_driver);
 }
 
