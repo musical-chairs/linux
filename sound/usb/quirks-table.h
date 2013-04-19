@@ -379,6 +379,64 @@ YAMAHA_DEVICE(0x105d, NULL),
         }
     }
 },
+/*
+ * Yamaha THR5a
+ */
+{
+   USB_DEVICE(0x0499, 0x150a),
+   .driver_info = (unsigned long) & (const struct snd_usb_audio_quirk) {
+      /* .vendor_name = "Yamaha", */
+      /* .product_name = "THR5a", */
+      .ifnum = QUIRK_ANY_INTERFACE,
+      .type = QUIRK_COMPOSITE,
+      .data = (const struct snd_usb_audio_quirk[]) {
+         {
+            .ifnum = 1,
+            .type = QUIRK_AUDIO_STANDARD_INTERFACE
+         },
+         {
+            .ifnum = 2,
+            .type = QUIRK_AUDIO_STANDARD_INTERFACE
+         },
+         {
+            .ifnum = 3,
+            .type = QUIRK_MIDI_YAMAHA
+         },
+         {
+            .ifnum = -1
+         }
+      }
+   }
+},
+/*
+ * Yamaha THR10c
+ */
+{
+   USB_DEVICE(0x0499, 0x150c),
+   .driver_info = (unsigned long) & (const struct snd_usb_audio_quirk) {
+      /* .vendor_name = "Yamaha", */
+      /* .product_name = "THR10c", */
+      .ifnum = QUIRK_ANY_INTERFACE,
+      .type = QUIRK_COMPOSITE,
+      .data = (const struct snd_usb_audio_quirk[]) {
+         {
+            .ifnum = 1,
+            .type = QUIRK_AUDIO_STANDARD_INTERFACE
+         },
+         {
+            .ifnum = 2,
+            .type = QUIRK_AUDIO_STANDARD_INTERFACE
+         },
+         {
+            .ifnum = 3,
+            .type = QUIRK_MIDI_YAMAHA
+         },
+         {
+            .ifnum = -1
+         }
+      }
+   }
+},
 YAMAHA_DEVICE(0x2000, "DGP-7"),
 YAMAHA_DEVICE(0x2001, "DGP-5"),
 YAMAHA_DEVICE(0x2002, NULL),
