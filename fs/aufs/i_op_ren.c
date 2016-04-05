@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2015 Junjiro R. Okajima
+ * Copyright (C) 2005-2016 Junjiro R. Okajima
  */
 
 /*
@@ -77,7 +77,7 @@ struct au_ren_args {
 /*
  * functions for reverting.
  * when an error happened in a single rename systemcall, we should revert
- * everything as if nothing happend.
+ * everything as if nothing happened.
  * we don't need to revert the copied-up/down the parent dir since they are
  * harmless.
  */
@@ -829,11 +829,9 @@ int aufs_rename(struct inode *_src_dir, struct dentry *_src_dentry,
 		if (unlikely(d_really_is_positive(a->dst_dentry)
 			     && !d_is_dir(a->dst_dentry)))
 			goto out_free;
-		err = aufs_read_and_write_lock2(a->dst_dentry, a->src_dentry,
-						AuLock_DIR | flags);
-	} else
-		err = aufs_read_and_write_lock2(a->dst_dentry, a->src_dentry,
-						flags);
+		flags |= AuLock_DIRS;
+	}
+	err = aufs_read_and_write_lock2(a->dst_dentry, a->src_dentry, flags);
 	if (unlikely(err))
 		goto out_free;
 
@@ -859,7 +857,7 @@ int aufs_rename(struct inode *_src_dir, struct dentry *_src_dentry,
 
 	/*
 	 * is it possible?
-	 * yes, it happend (in linux-3.3-rcN) but I don't know why.
+	 * yes, it happened (in linux-3.3-rcN) but I don't know why.
 	 * there may exist a problem somewhere else.
 	 */
 	err = -EINVAL;

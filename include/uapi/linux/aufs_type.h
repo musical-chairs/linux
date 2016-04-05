@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2015 Junjiro R. Okajima
+ * Copyright (C) 2005-2016 Junjiro R. Okajima
  */
 
 #ifndef __AUFS_TYPE_H__
@@ -26,7 +26,7 @@
 
 #include <linux/limits.h>
 
-#define AUFS_VERSION	"4.1"
+#define AUFS_VERSION	"4.1.13+"
 
 /* todo? move this to linux-2.6.19/include/magic.h */
 #define AUFS_SUPER_MAGIC	('a' << 24 | 'u' << 16 | 'f' << 8 | 's')

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2015 Junjiro R. Okajima
+ * Copyright (C) 2005-2016 Junjiro R. Okajima
  */
 
 /*
@@ -16,7 +16,7 @@ int au_do_open_nondir(struct file *file, int flags, struct file *h_file)
 {
 	int err;
 	aufs_bindex_t bindex;
-	struct dentry *dentry;
+	struct dentry *dentry, *h_dentry;
 	struct au_finfo *finfo;
 	struct inode *h_inode;
 
@@ -29,10 +29,19 @@ int au_do_open_nondir(struct file *file, int flags, struct file *h_file)
 	memset(&finfo->fi_htop, 0, sizeof(finfo->fi_htop));
 	atomic_set(&finfo->fi_mmapped, 0);
 	bindex = au_dbstart(dentry);
-	if (!h_file)
+	if (!h_file) {
+		h_dentry = au_h_dptr(dentry, bindex);
+		err = vfsub_test_mntns(file->f_path.mnt, h_dentry->d_sb);
+		if (unlikely(err))
+			goto out;
 		h_file = au_h_open(dentry, bindex, flags, file, /*force_wr*/0);
-	else
+	} else {
+		h_dentry = h_file->f_path.dentry;
+		err = vfsub_test_mntns(file->f_path.mnt, h_dentry->d_sb);
+		if (unlikely(err))
+			goto out;
 		get_file(h_file);
+	}
 	if (IS_ERR(h_file))
 		err = PTR_ERR(h_file);
 	else {
@@ -50,6 +59,7 @@ int au_do_open_nondir(struct file *file, int flags, struct file *h_file)
 		/* file->f_ra = h_file->f_ra; */
 	}
 
+out:
 	return err;
 }
 
@@ -678,6 +688,29 @@ out:
 	return err;
 }
 
+static int aufs_setfl(struct file *file, unsigned long arg)
+{
+	int err;
+	struct file *h_file;
+	struct super_block *sb;
+
+	sb = file->f_path.dentry->d_sb;
+	si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLMW);
+
+	h_file = au_read_pre(file, /*keep_fi*/0);
+	err = PTR_ERR(h_file);
+	if (IS_ERR(h_file))
+		goto out;
+
+	arg |= vfsub_file_flags(file) & FASYNC; /* stop calling h_file->fasync */
+	err = setfl(/*unused fd*/-1, h_file, arg);
+	fput(h_file); /* instead of au_read_post() */
+
+out:
+	si_read_unlock(sb);
+	return err;
+}
+
 /* ---------------------------------------------------------------------- */
 
 /* no one supports this operation, currently */
@@ -715,6 +748,7 @@ const struct file_operations aufs_file_fop = {
 	/* .aio_fsync	= aufs_aio_fsync_nondir, */
 	.fasync		= aufs_fasync,
 	/* .sendpage	= aufs_sendpage, */
+	.setfl		= aufs_setfl,
 	.splice_write	= aufs_splice_write,
 	.splice_read	= aufs_splice_read,
 #if 0

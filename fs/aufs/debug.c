@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2015 Junjiro R. Okajima
+ * Copyright (C) 2005-2016 Junjiro R. Okajima
  */
 
 /*
@@ -317,9 +317,7 @@ void au_dpri_sb(struct super_block *sb)
 	}
 
 	a->mnt.mnt_sb = sb;
-	a->fake.br_perm = 0;
 	a->fake.br_path.mnt = &a->mnt;
-	a->fake.br_xino.xi_file = NULL;
 	atomic_set(&a->fake.br_count, 0);
 	smp_mb(); /* atomic_set */
 	err = do_pri_br(-1, &a->fake);

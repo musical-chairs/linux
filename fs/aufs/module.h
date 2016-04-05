@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2015 Junjiro R. Okajima
+ * Copyright (C) 2005-2016 Junjiro R. Okajima
  */
 
 /*
@@ -18,6 +18,7 @@ struct seq_file;
 
 /* module parameters */
 extern int sysaufs_brs;
+extern bool au_userns;
 
 /* ---------------------------------------------------------------------- */
 

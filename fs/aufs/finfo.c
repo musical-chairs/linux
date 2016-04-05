@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2015 Junjiro R. Okajima
+ * Copyright (C) 2005-2016 Junjiro R. Okajima
  */
 
 /*
@@ -62,7 +62,6 @@ struct au_fidir *au_fidir_alloc(struct super_block *sb)
 	if (fidir) {
 		fidir->fd_bbot = -1;
 		fidir->fd_nent = nbr;
-		fidir->fd_vdir_cache = NULL;
 	}
 
 	return fidir;
