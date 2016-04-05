@@ -1127,6 +1127,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 	cmpwi	r12, BOOK3S_INTERRUPT_H_DOORBELL
 	bne	3f
 	lbz	r0, HSTATE_HOST_IPI(r13)
+	cmpwi	r0, 0
 	beq	4f
 	b	guest_exit_cont
 3:
@@ -1170,6 +1171,7 @@ mc_cont:
 	bl	kvmhv_accumulate_time
 #endif
 
+	mr 	r3, r12
 	/* Increment exit count, poke other threads to exit */
 	bl	kvmhv_commence_exit
 	nop
@@ -2045,7 +2047,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_207S)
 
 	/* Emulate H_SET_DABR/X on P8 for the sake of compat mode guests */
 2:	rlwimi	r5, r4, 5, DAWRX_DR | DAWRX_DW
-	rlwimi	r5, r4, 1, DAWRX_WT
+	rlwimi	r5, r4, 2, DAWRX_WT
 	clrrdi	r4, r4, 3
 	std	r4, VCPU_DAWR(r3)
 	std	r5, VCPU_DAWRX(r3)
