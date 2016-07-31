@@ -832,6 +832,7 @@ struct user_struct {
 #endif
 	unsigned long locked_shm; /* How many pages of mlocked shm ? */
 	unsigned long unix_inflight;	/* How many files in flight in unix sockets */
+	atomic_long_t pipe_bufs;  /* how many pages are allocated in pipe buffers */
 
 #ifdef CONFIG_KEYS
 	struct key *uid_keyring;	/* UID specific keyring */
@@ -1539,12 +1540,14 @@ struct task_struct {
 	cputime_t gtime;
 	struct prev_cputime prev_cputime;
 #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
-	raw_spinlock_t vtime_lock;
-	seqcount_t vtime_seq;
+	seqcount_t vtime_seqcount;
 	unsigned long long vtime_snap;
 	enum {
-		VTIME_SLEEPING = 0,
+		/* Task is sleeping or running in a CPU with VTIME inactive */
+		VTIME_INACTIVE = 0,
+		/* Task runs in userspace in a CPU with VTIME active */
 		VTIME_USER,
+		/* Task runs in kernelspace in a CPU with VTIME active */
 		VTIME_SYS,
 	} vtime_snap_whence;
 #endif
