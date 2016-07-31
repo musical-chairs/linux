@@ -149,7 +149,7 @@ struct dentry *au_whtmp_lkup(struct dentry *h_parent, struct au_branch *br,
 
 out_name:
 	if (name != defname)
-		kfree(name);
+		au_delayed_kfree(name);
 out:
 	AuTraceErrPtr(dentry);
 	return dentry;
@@ -585,10 +585,10 @@ static void reinit_br_wh(void *arg)
 out:
 	if (wbr)
 		atomic_dec(&wbr->wbr_wh_running);
-	atomic_dec(&a->br->br_count);
+	au_br_put(a->br);
 	si_write_unlock(a->sb);
 	au_nwt_done(&au_sbi(a->sb)->si_nowait);
-	kfree(arg);
+	au_delayed_kfree(arg);
 	if (unlikely(err))
 		AuIOErr("err %d\n", err);
 }
@@ -611,12 +611,12 @@ static void kick_reinit_br_wh(struct super_block *sb, struct au_branch *br)
 		 */
 		arg->sb = sb;
 		arg->br = br;
-		atomic_inc(&br->br_count);
+		au_br_get(br);
 		wkq_err = au_wkq_nowait(reinit_br_wh, arg, sb, /*flags*/0);
 		if (unlikely(wkq_err)) {
 			atomic_dec(&br->br_wbr->wbr_wh_running);
-			atomic_dec(&br->br_count);
-			kfree(arg);
+			au_br_put(br);
+			au_delayed_kfree(arg);
 		}
 		do_dec = 0;
 	}
@@ -775,7 +775,7 @@ struct dentry *au_wh_lkup(struct dentry *h_parent, struct qstr *base_name,
 	wh_dentry = ERR_PTR(err);
 	if (!err) {
 		wh_dentry = vfsub_lkup_one(&wh_name, h_parent);
-		kfree(wh_name.name);
+		au_delayed_kfree(wh_name.name);
 	}
 	return wh_dentry;
 }
@@ -851,7 +851,7 @@ static int del_wh_children(struct dentry *h_dentry, struct au_nhash *whlist,
 			break;
 		}
 	}
-	free_page((unsigned long)wh_name.name);
+	au_delayed_free_page((unsigned long)wh_name.name);
 
 out:
 	return err;
@@ -893,7 +893,7 @@ struct au_whtmp_rmdir *au_whtmp_rmdir_alloc(struct super_block *sb, gfp_t gfp)
 		rdhash = AUFS_RDHASH_DEF;
 	err = au_nhash_alloc(&whtmp->whlist, rdhash, gfp);
 	if (unlikely(err)) {
-		kfree(whtmp);
+		au_delayed_kfree(whtmp);
 		whtmp = ERR_PTR(err);
 	}
 
@@ -904,11 +904,11 @@ out:
 void au_whtmp_rmdir_free(struct au_whtmp_rmdir *whtmp)
 {
 	if (whtmp->br)
-		atomic_dec(&whtmp->br->br_count);
+		au_br_put(whtmp->br);
 	dput(whtmp->wh_dentry);
 	iput(whtmp->dir);
 	au_nhash_wh_free(&whtmp->whlist);
-	kfree(whtmp);
+	au_delayed_kfree(whtmp);
 }
 
 /*
@@ -963,7 +963,7 @@ int au_whtmp_rmdir(struct inode *dir, aufs_bindex_t bindex,
 	}
 
 	if (!err) {
-		if (au_ibstart(dir) == bindex) {
+		if (au_ibtop(dir) == bindex) {
 			/* todo: dir->i_mutex is necessary */
 			au_cpup_attr_timesizes(dir);
 			if (h_nlink)
@@ -1037,7 +1037,7 @@ void au_whtmp_kick_rmdir(struct inode *dir, aufs_bindex_t bindex,
 	sb = dir->i_sb;
 	args->dir = au_igrab(dir);
 	args->br = au_sbr(sb, bindex);
-	atomic_inc(&args->br->br_count);
+	au_br_get(args->br);
 	args->wh_dentry = dget(wh_dentry);
 	wkq_err = au_wkq_nowait(call_rmdir_whtmp, args, sb, /*flags*/0);
 	if (unlikely(wkq_err)) {

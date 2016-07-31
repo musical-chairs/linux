@@ -220,7 +220,7 @@ static struct dentry *decode_by_ino(struct super_block *sb, ino_t ino,
 
 	dentry = ERR_PTR(-ESTALE);
 	sigen = au_sigen(sb);
-	if (unlikely(is_bad_inode(inode)
+	if (unlikely(au_is_bad_inode(inode)
 		     || IS_DEADDIR(inode)
 		     || sigen != au_iigen(inode, NULL)))
 		goto out_iput;
@@ -406,7 +406,7 @@ static struct dentry *au_lkup_by_ino(struct path *path, ino_t ino,
 	}
 
 out_name:
-	free_page((unsigned long)arg.name);
+	au_delayed_free_page((unsigned long)arg.name);
 out_file:
 	fput(file);
 out:
@@ -502,9 +502,11 @@ struct dentry *decode_by_path(struct super_block *sb, ino_t ino, __u32 *fh,
 	h_mnt = au_br_mnt(br);
 	h_sb = h_mnt->mnt_sb;
 	/* todo: call lower fh_to_dentry()? fh_to_parent()? */
+	lockdep_off();
 	h_parent = exportfs_decode_fh(h_mnt, (void *)(fh + Fh_tail),
 				      fh_len - Fh_tail, fh[Fh_h_type],
 				      h_acceptable, /*context*/NULL);
+	lockdep_on();
 	dentry = h_parent;
 	if (unlikely(!h_parent || IS_ERR(h_parent))) {
 		AuWarn1("%s decode_fh failed, %ld\n",
@@ -558,7 +560,7 @@ out_relock:
 			dentry = ERR_PTR(-ESTALE);
 		}
 out_pathname:
-	free_page((unsigned long)pathname);
+	au_delayed_free_page((unsigned long)pathname);
 out_h_parent:
 	dput(h_parent);
 out:
@@ -608,7 +610,7 @@ aufs_fh_to_dentry(struct super_block *sb, struct fid *fid, int fh_len,
 
 	/* is the parent dir cached? */
 	br = au_sbr(sb, nsi_lock.bindex);
-	atomic_inc(&br->br_count);
+	au_br_get(br);
 	dentry = decode_by_dir_ino(sb, ino, dir_ino, &nsi_lock);
 	if (IS_ERR(dentry))
 		goto out_unlock;
@@ -632,7 +634,7 @@ accept:
 	dentry = ERR_PTR(-ESTALE);
 out_unlock:
 	if (br)
-		atomic_dec(&br->br_count);
+		au_br_put(br);
 	si_read_unlock(sb);
 out:
 	AuTraceErrPtr(dentry);
@@ -699,7 +701,7 @@ static int aufs_encode_fh(struct inode *inode, __u32 *fh, int *max_len,
 	err = -EIO;
 	parent = NULL;
 	ii_read_lock_child(inode);
-	bindex = au_ibstart(inode);
+	bindex = au_ibtop(inode);
 	if (!dir) {
 		dentry = d_find_any_alias(inode);
 		if (unlikely(!dentry))
@@ -774,7 +776,7 @@ static int aufs_commit_metadata(struct inode *inode)
 	sb = inode->i_sb;
 	si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLMW);
 	ii_write_lock_child(inode);
-	bindex = au_ibstart(inode);
+	bindex = au_ibtop(inode);
 	AuDebugOn(bindex < 0);
 	h_inode = au_h_iptr(inode, bindex);
 
@@ -809,6 +811,11 @@ void au_export_init(struct super_block *sb)
 {
 	struct au_sbinfo *sbinfo;
 	__u32 u;
+
+	BUILD_BUG_ON_MSG(IS_BUILTIN(CONFIG_AUFS_FS)
+			 && IS_MODULE(CONFIG_EXPORTFS),
+			 AUFS_NAME ": unsupported configuration "
+			 "CONFIG_EXPORTFS=m and CONFIG_AUFS_FS=y");
 
 	sb->s_export_op = &aufs_export_op;
 	sbinfo = au_sbi(sb);

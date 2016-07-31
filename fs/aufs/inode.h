@@ -22,7 +22,10 @@ struct au_hnotify {
 	/* never use fsnotify_add_vfsmount_mark() */
 	struct fsnotify_mark		hn_mark;
 #endif
-	struct inode			*hn_aufs_inode;	/* no get/put */
+	union {
+		struct inode		*hn_aufs_inode;	/* no get/put */
+		struct llist_node	hn_lnode;	/* delayed free */
+	};
 #endif
 } ____cacheline_aligned_in_smp;
 
@@ -56,7 +59,7 @@ struct au_iinfo {
 	struct super_block	*ii_hsb1;	/* no get/put */
 
 	struct au_rwsem		ii_rwsem;
-	aufs_bindex_t		ii_bstart, ii_bend;
+	aufs_bindex_t		ii_btop, ii_bbot;
 	__u32			ii_higen;
 	struct au_hinode	*ii_hinode;
 	struct au_vdir		*ii_vdir;
@@ -65,6 +68,10 @@ struct au_iinfo {
 struct au_icntnr {
 	struct au_iinfo iinfo;
 	struct inode vfs_inode;
+	union {
+		struct hlist_node	plink;
+		struct llist_node	lnode;	/* delayed free */
+	};
 } ____cacheline_aligned_in_smp;
 
 /* au_pin flags */
@@ -105,12 +112,8 @@ void au_pin_hdir_release(struct au_pin *p);
 
 static inline struct au_iinfo *au_ii(struct inode *inode)
 {
-	struct au_iinfo *iinfo;
-
-	iinfo = &(container_of(inode, struct au_icntnr, vfs_inode)->iinfo);
-	if (iinfo->ii_hinode)
-		return iinfo;
-	return NULL; /* debugging bad_inode case */
+	BUG_ON(is_bad_inode(inode));
+	return &(container_of(inode, struct au_icntnr, vfs_inode)->iinfo);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -253,9 +256,10 @@ void au_update_iigen(struct inode *inode, int half);
 void au_update_ibrange(struct inode *inode, int do_put_zero);
 
 void au_icntnr_init_once(void *_c);
+void au_hinode_init(struct au_hinode *hinode);
 int au_iinfo_init(struct inode *inode);
 void au_iinfo_fin(struct inode *inode);
-int au_ii_realloc(struct au_iinfo *iinfo, int nbr);
+int au_hinode_realloc(struct au_iinfo *iinfo, int nbr);
 
 #ifdef CONFIG_PROC_FS
 /* plink.c */
@@ -463,23 +467,34 @@ static inline int au_iigen_test(struct inode *inode, unsigned int sigen)
 
 /* ---------------------------------------------------------------------- */
 
+static inline struct au_hinode *au_hinode(struct au_iinfo *iinfo,
+					  aufs_bindex_t bindex)
+{
+	return iinfo->ii_hinode + bindex;
+}
+
+static inline int au_is_bad_inode(struct inode *inode)
+{
+	return !!(is_bad_inode(inode) || !au_hinode(au_ii(inode), 0));
+}
+
 static inline aufs_bindex_t au_ii_br_id(struct inode *inode,
 					aufs_bindex_t bindex)
 {
 	IiMustAnyLock(inode);
-	return au_ii(inode)->ii_hinode[0 + bindex].hi_id;
+	return au_hinode(au_ii(inode), bindex)->hi_id;
 }
 
-static inline aufs_bindex_t au_ibstart(struct inode *inode)
+static inline aufs_bindex_t au_ibtop(struct inode *inode)
 {
 	IiMustAnyLock(inode);
-	return au_ii(inode)->ii_bstart;
+	return au_ii(inode)->ii_btop;
 }
 
-static inline aufs_bindex_t au_ibend(struct inode *inode)
+static inline aufs_bindex_t au_ibbot(struct inode *inode)
 {
 	IiMustAnyLock(inode);
-	return au_ii(inode)->ii_bend;
+	return au_ii(inode)->ii_bbot;
 }
 
 static inline struct au_vdir *au_ivdir(struct inode *inode)
@@ -491,19 +506,19 @@ static inline struct au_vdir *au_ivdir(struct inode *inode)
 static inline struct dentry *au_hi_wh(struct inode *inode, aufs_bindex_t bindex)
 {
 	IiMustAnyLock(inode);
-	return au_ii(inode)->ii_hinode[0 + bindex].hi_whdentry;
+	return au_hinode(au_ii(inode), bindex)->hi_whdentry;
 }
 
-static inline void au_set_ibstart(struct inode *inode, aufs_bindex_t bindex)
+static inline void au_set_ibtop(struct inode *inode, aufs_bindex_t bindex)
 {
 	IiMustWriteLock(inode);
-	au_ii(inode)->ii_bstart = bindex;
+	au_ii(inode)->ii_btop = bindex;
 }
 
-static inline void au_set_ibend(struct inode *inode, aufs_bindex_t bindex)
+static inline void au_set_ibbot(struct inode *inode, aufs_bindex_t bindex)
 {
 	IiMustWriteLock(inode);
-	au_ii(inode)->ii_bend = bindex;
+	au_ii(inode)->ii_bbot = bindex;
 }
 
 static inline void au_set_ivdir(struct inode *inode, struct au_vdir *vdir)
@@ -515,7 +530,7 @@ static inline void au_set_ivdir(struct inode *inode, struct au_vdir *vdir)
 static inline struct au_hinode *au_hi(struct inode *inode, aufs_bindex_t bindex)
 {
 	IiMustAnyLock(inode);
-	return au_ii(inode)->ii_hinode + bindex;
+	return au_hinode(au_ii(inode), bindex);
 }
 
 /* ---------------------------------------------------------------------- */

@@ -22,7 +22,7 @@ int au_hn_alloc(struct au_hinode *hinode, struct inode *inode)
 		AuTraceErr(err);
 		if (unlikely(err)) {
 			hinode->hi_notify = NULL;
-			au_cache_free_hnotify(hn);
+			au_cache_dfree_hnotify(hn);
 			/*
 			 * The upper dir was removed by udba, but the same named
 			 * dir left. In this case, aufs assignes a new inode
@@ -46,7 +46,7 @@ void au_hn_free(struct au_hinode *hinode)
 	if (hn) {
 		hinode->hi_notify = NULL;
 		if (au_hnotify_op.free(hinode, hn))
-			au_cache_free_hnotify(hn);
+			au_cache_dfree_hnotify(hn);
 	}
 }
 
@@ -60,12 +60,12 @@ void au_hn_ctl(struct au_hinode *hinode, int do_set)
 
 void au_hn_reset(struct inode *inode, unsigned int flags)
 {
-	aufs_bindex_t bindex, bend;
+	aufs_bindex_t bindex, bbot;
 	struct inode *hi;
 	struct dentry *iwhdentry;
 
-	bend = au_ibend(inode);
-	for (bindex = au_ibstart(inode); bindex <= bend; bindex++) {
+	bbot = au_ibbot(inode);
+	for (bindex = au_ibtop(inode); bindex <= bbot; bindex++) {
 		hi = au_h_iptr(inode, bindex);
 		if (!hi)
 			continue;
@@ -89,7 +89,7 @@ void au_hn_reset(struct inode *inode, unsigned int flags)
 static int hn_xino(struct inode *inode, struct inode *h_inode)
 {
 	int err;
-	aufs_bindex_t bindex, bend, bfound, bstart;
+	aufs_bindex_t bindex, bbot, bfound, btop;
 	struct inode *h_i;
 
 	err = 0;
@@ -99,15 +99,15 @@ static int hn_xino(struct inode *inode, struct inode *h_inode)
 	}
 
 	bfound = -1;
-	bend = au_ibend(inode);
-	bstart = au_ibstart(inode);
+	bbot = au_ibbot(inode);
+	btop = au_ibtop(inode);
 #if 0 /* reserved for future use */
-	if (bindex == bend) {
+	if (bindex == bbot) {
 		/* keep this ino in rename case */
 		goto out;
 	}
 #endif
-	for (bindex = bstart; bindex <= bend; bindex++)
+	for (bindex = btop; bindex <= bbot; bindex++)
 		if (au_h_iptr(inode, bindex) == h_inode) {
 			bfound = bindex;
 			break;
@@ -115,7 +115,7 @@ static int hn_xino(struct inode *inode, struct inode *h_inode)
 	if (bfound < 0)
 		goto out;
 
-	for (bindex = bstart; bindex <= bend; bindex++) {
+	for (bindex = btop; bindex <= bbot; bindex++) {
 		h_i = au_h_iptr(inode, bindex);
 		if (!h_i)
 			continue;
@@ -420,7 +420,7 @@ static void au_hn_bh(void *_args)
 {
 	struct au_hnotify_args *a = _args;
 	struct super_block *sb;
-	aufs_bindex_t bindex, bend, bfound;
+	aufs_bindex_t bindex, bbot, bfound;
 	unsigned char xino, try_iput;
 	int err;
 	struct inode *inode;
@@ -451,8 +451,8 @@ static void au_hn_bh(void *_args)
 
 	ii_read_lock_parent(a->dir);
 	bfound = -1;
-	bend = au_ibend(a->dir);
-	for (bindex = au_ibstart(a->dir); bindex <= bend; bindex++)
+	bbot = au_ibbot(a->dir);
+	for (bindex = au_ibtop(a->dir); bindex <= bbot; bindex++)
 		if (au_h_iptr(a->dir, bindex) == a->h_dir) {
 			bfound = bindex;
 			break;
@@ -519,7 +519,7 @@ out:
 	iput(a->dir);
 	si_write_unlock(sb);
 	au_nwt_done(&sbinfo->si_nowait);
-	kfree(a);
+	au_delayed_kfree(a);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -625,7 +625,7 @@ int au_hnotify(struct inode *h_dir, struct au_hnotify *hnotify, u32 mask,
 		iput(args->h_child_inode);
 		iput(args->h_dir);
 		iput(args->dir);
-		kfree(args);
+		au_delayed_kfree(args);
 	}
 
 out:
@@ -666,17 +666,26 @@ void au_hnotify_fin_br(struct au_branch *br)
 
 static void au_hn_destroy_cache(void)
 {
-	kmem_cache_destroy(au_cachep[AuCache_HNOTIFY]);
-	au_cachep[AuCache_HNOTIFY] = NULL;
+	struct au_cache *cp;
+
+	flush_delayed_work(&au_dfree.dwork);
+	cp = au_dfree.cache + AuCache_HNOTIFY;
+	AuDebugOn(!llist_empty(&cp->llist));
+	kmem_cache_destroy(cp->cache);
+	cp->cache = NULL;
 }
+
+AU_CACHE_DFREE_FUNC(hnotify, HNOTIFY, hn_lnode);
 
 int __init au_hnotify_init(void)
 {
 	int err;
+	struct au_cache *cp;
 
 	err = -ENOMEM;
-	au_cachep[AuCache_HNOTIFY] = AuCache(au_hnotify);
-	if (au_cachep[AuCache_HNOTIFY]) {
+	cp = au_dfree.cache + AuCache_HNOTIFY;
+	cp->cache = AuCache(au_hnotify);
+	if (cp->cache) {
 		err = 0;
 		if (au_hnotify_op.init)
 			err = au_hnotify_op.init();
@@ -689,9 +698,13 @@ int __init au_hnotify_init(void)
 
 void au_hnotify_fin(void)
 {
+	struct au_cache *cp;
+
 	if (au_hnotify_op.fin)
 		au_hnotify_op.fin();
+
 	/* cf. au_cache_fin() */
-	if (au_cachep[AuCache_HNOTIFY])
+	cp = au_dfree.cache + AuCache_HNOTIFY;
+	if (cp->cache)
 		au_hn_destroy_cache();
 }

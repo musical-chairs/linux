@@ -181,6 +181,12 @@ static inline unsigned int vfsub_file_flags(struct file *file)
 	return flags;
 }
 
+static inline int vfsub_file_execed(struct file *file)
+{
+	/* todo: direct access f_flags */
+	return !!(vfsub_file_flags(file) & __FMODE_EXEC);
+}
+
 #if 0 /* reserved */
 static inline void vfsub_file_accessed(struct file *h_file)
 {
@@ -205,7 +211,7 @@ static inline void vfsub_touch_atime(struct vfsmount *h_mnt,
 static inline int vfsub_update_time(struct inode *h_inode, struct timespec *ts,
 				    int flags)
 {
-	return generic_update_time(h_inode, ts, flags);
+	return update_time(h_inode, ts, flags);
 	/* no vfsub_update_h_iattr() since we don't have struct path */
 }
 

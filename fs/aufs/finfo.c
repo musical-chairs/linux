@@ -8,14 +8,13 @@
 
 #include "aufs.h"
 
-void au_hfput(struct au_hfile *hf, struct file *file)
+void au_hfput(struct au_hfile *hf, int execed)
 {
-	/* todo: direct access f_flags */
-	if (vfsub_file_flags(file) & __FMODE_EXEC)
+	if (execed)
 		allow_write_access(hf->hf_file);
 	fput(hf->hf_file);
 	hf->hf_file = NULL;
-	atomic_dec(&hf->hf_br->br_count);
+	au_br_put(hf->hf_br);
 	hf->hf_br = NULL;
 }
 
@@ -33,7 +32,7 @@ void au_set_h_fptr(struct file *file, aufs_bindex_t bindex, struct file *val)
 		hf = fidir->fd_hfile + bindex;
 
 	if (hf && hf->hf_file)
-		au_hfput(hf, file);
+		au_hfput(hf, vfsub_file_execed(file));
 	if (val) {
 		FiMustWriteLock(file);
 		AuDebugOn(IS_ERR_OR_NULL(file->f_path.dentry));
@@ -55,7 +54,7 @@ struct au_fidir *au_fidir_alloc(struct super_block *sb)
 	struct au_fidir *fidir;
 	int nbr;
 
-	nbr = au_sbend(sb) + 1;
+	nbr = au_sbbot(sb) + 1;
 	if (nbr < 2)
 		nbr = 2; /* initial allocate for 2 branches */
 	fidir = kzalloc(au_fidir_sz(nbr), GFP_NOFS);
@@ -90,7 +89,7 @@ int au_fidir_realloc(struct au_finfo *finfo, int nbr)
 
 /* ---------------------------------------------------------------------- */
 
-void au_finfo_fin(struct file *file)
+void au_finfo_fin(struct file *file, int atonce)
 {
 	struct au_finfo *finfo;
 
@@ -99,16 +98,17 @@ void au_finfo_fin(struct file *file)
 	finfo = au_fi(file);
 	AuDebugOn(finfo->fi_hdir);
 	AuRwDestroy(&finfo->fi_rwsem);
-	au_cache_free_finfo(finfo);
+	if (!atonce)
+		au_cache_dfree_finfo(finfo);
+	else
+		au_cache_free_finfo(finfo);
 }
 
 void au_fi_init_once(void *_finfo)
 {
 	struct au_finfo *finfo = _finfo;
-	static struct lock_class_key aufs_fi;
 
 	au_rw_init(&finfo->fi_rwsem);
-	au_rw_class(&finfo->fi_rwsem, &aufs_fi);
 }
 
 int au_finfo_init(struct file *file, struct au_fidir *fidir)
@@ -125,11 +125,6 @@ int au_finfo_init(struct file *file, struct au_fidir *fidir)
 
 	err = 0;
 	au_nfiles_inc(dentry->d_sb);
-	/* verbose coding for lock class name */
-	if (!fidir)
-		au_rw_class(&finfo->fi_rwsem, au_lc_key + AuLcNonDir_FIINFO);
-	else
-		au_rw_class(&finfo->fi_rwsem, au_lc_key + AuLcDir_FIINFO);
 	au_rw_write_lock(&finfo->fi_rwsem);
 	finfo->fi_btop = -1;
 	finfo->fi_hdir = fidir;

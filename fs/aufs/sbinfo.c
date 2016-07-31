@@ -22,27 +22,32 @@ void au_si_free(struct kobject *kobj)
 		AuDebugOn(!hlist_empty(&sbinfo->si_plink[i].head));
 	AuDebugOn(atomic_read(&sbinfo->si_nowait.nw_len));
 
+	AuDebugOn(percpu_counter_sum(&sbinfo->si_ninodes));
+	percpu_counter_destroy(&sbinfo->si_ninodes);
+	AuDebugOn(percpu_counter_sum(&sbinfo->si_nfiles));
+	percpu_counter_destroy(&sbinfo->si_nfiles);
+
 	AuDebugOn(!hlist_empty(&sbinfo->si_symlink.head));
 
 	au_rw_write_lock(&sbinfo->si_rwsem);
 	au_br_free(sbinfo);
 	au_rw_write_unlock(&sbinfo->si_rwsem);
 
-	kfree(sbinfo->si_branch);
+	au_delayed_kfree(sbinfo->si_branch);
 	for (i = 0; i < AU_NPIDMAP; i++)
-		kfree(sbinfo->au_si_pid.pid_bitmap[i]);
+		if (sbinfo->au_si_pid.pid_bitmap[i])
+			au_delayed_kfree(sbinfo->au_si_pid.pid_bitmap[i]);
 	mutex_destroy(&sbinfo->au_si_pid.pid_mtx);
 	mutex_destroy(&sbinfo->si_xib_mtx);
 	AuRwDestroy(&sbinfo->si_rwsem);
 
-	kfree(sbinfo);
+	au_delayed_kfree(sbinfo);
 }
 
 int au_si_alloc(struct super_block *sb)
 {
 	int err, i;
 	struct au_sbinfo *sbinfo;
-	static struct lock_class_key aufs_si;
 
 	err = -ENOMEM;
 	sbinfo = kzalloc(sizeof(*sbinfo), GFP_NOFS);
@@ -60,13 +65,12 @@ int au_si_alloc(struct super_block *sb)
 
 	au_nwt_init(&sbinfo->si_nowait);
 	au_rw_init_wlock(&sbinfo->si_rwsem);
-	au_rw_class(&sbinfo->si_rwsem, &aufs_si);
 	mutex_init(&sbinfo->au_si_pid.pid_mtx);
 
-	atomic_long_set(&sbinfo->si_ninodes, 0);
-	atomic_long_set(&sbinfo->si_nfiles, 0);
+	percpu_counter_init(&sbinfo->si_ninodes, 0, GFP_NOFS);
+	percpu_counter_init(&sbinfo->si_nfiles, 0, GFP_NOFS);
 
-	sbinfo->si_bend = -1;
+	sbinfo->si_bbot = -1;
 	sbinfo->si_last_br_id = AUFS_BRANCH_MAX / 2;
 
 	sbinfo->si_wbr_copyup = AuWbrCopyup_Def;
@@ -111,9 +115,9 @@ int au_si_alloc(struct super_block *sb)
 	return 0; /* success */
 
 out_br:
-	kfree(sbinfo->si_branch);
+	au_delayed_kfree(sbinfo->si_branch);
 out_sbinfo:
-	kfree(sbinfo);
+	au_delayed_kfree(sbinfo);
 out:
 	return err;
 }
@@ -126,7 +130,7 @@ int au_sbr_realloc(struct au_sbinfo *sbinfo, int nbr)
 	AuRwMustWriteLock(&sbinfo->si_rwsem);
 
 	err = -ENOMEM;
-	sz = sizeof(*brp) * (sbinfo->si_bend + 1);
+	sz = sizeof(*brp) * (sbinfo->si_bbot + 1);
 	if (unlikely(!sz))
 		sz = sizeof(*brp);
 	brp = au_kzrealloc(sbinfo->si_branch, sz, sizeof(*brp) * nbr, GFP_NOFS);

@@ -45,14 +45,6 @@ struct au_wbr_mfs {
 	unsigned long long	mfsrr_watermark;
 };
 
-struct pseudo_link {
-	union {
-		struct hlist_node hlist;
-		struct rcu_head rcu;
-	};
-	struct inode *inode;
-};
-
 #define AuPlink_NHASH 100
 static inline int au_plink_hash(ino_t ino)
 {
@@ -99,7 +91,7 @@ struct au_sbinfo {
 	 * dirty approach to protect sb->sb_inodes and ->s_files (gone) from
 	 * remount.
 	 */
-	atomic_long_t		si_ninodes, si_nfiles;
+	struct percpu_counter	si_ninodes, si_nfiles;
 
 	/* branch management */
 	unsigned int		si_generation;
@@ -107,7 +99,7 @@ struct au_sbinfo {
 	/* see AuSi_ flags */
 	unsigned char		au_si_status;
 
-	aufs_bindex_t		si_bend;
+	aufs_bindex_t		si_bbot;
 
 	/* dirty trick to keep br_id plus */
 	unsigned int		si_last_br_id :
@@ -201,7 +193,7 @@ struct au_sbinfo {
 #endif
 
 #ifdef CONFIG_AUFS_SBILIST
-	struct list_head	si_list;
+	struct hlist_node	si_list;
 #endif
 
 	/* dirty, necessary for unmounting, sysfs and sysrq */
@@ -296,7 +288,7 @@ extern struct au_wbr_copyup_operations au_wbr_copyup_ops[];
 extern struct au_wbr_create_operations au_wbr_create_ops[];
 int au_cpdown_dirs(struct dentry *dentry, aufs_bindex_t bdst);
 int au_wbr_nonopq(struct dentry *dentry, aufs_bindex_t bindex);
-int au_wbr_do_copyup_bu(struct dentry *dentry, aufs_bindex_t bstart);
+int au_wbr_do_copyup_bu(struct dentry *dentry, aufs_bindex_t btop);
 
 /* mvdown.c */
 int au_mvdown(struct dentry *dentry, struct aufs_mvdown __user *arg);
@@ -375,21 +367,21 @@ AuStub(int, au_busy_or_stale, return -EBUSY, void)
 
 #ifdef CONFIG_AUFS_SBILIST
 /* module.c */
-extern struct au_splhead au_sbilist;
+extern struct au_sphlhead au_sbilist;
 
 static inline void au_sbilist_init(void)
 {
-	au_spl_init(&au_sbilist);
+	au_sphl_init(&au_sbilist);
 }
 
 static inline void au_sbilist_add(struct super_block *sb)
 {
-	au_spl_add(&au_sbi(sb)->si_list, &au_sbilist);
+	au_sphl_add(&au_sbi(sb)->si_list, &au_sbilist);
 }
 
 static inline void au_sbilist_del(struct super_block *sb)
 {
-	au_spl_del(&au_sbi(sb)->si_list, &au_sbilist);
+	au_sphl_del(&au_sbi(sb)->si_list, &au_sbilist);
 }
 
 #ifdef CONFIG_AUFS_MAGIC_SYSRQ
@@ -559,10 +551,10 @@ static inline void si_downgrade_lock(struct super_block *sb)
 
 /* ---------------------------------------------------------------------- */
 
-static inline aufs_bindex_t au_sbend(struct super_block *sb)
+static inline aufs_bindex_t au_sbbot(struct super_block *sb)
 {
 	SiMustAnyLock(sb);
-	return au_sbi(sb)->si_bend;
+	return au_sbi(sb)->si_bbot;
 }
 
 static inline unsigned int au_mntflags(struct super_block *sb)
@@ -577,26 +569,40 @@ static inline unsigned int au_sigen(struct super_block *sb)
 	return au_sbi(sb)->si_generation;
 }
 
+static inline unsigned long long au_ninodes(struct super_block *sb)
+{
+	s64 n = percpu_counter_sum(&au_sbi(sb)->si_ninodes);
+
+	BUG_ON(n < 0);
+	return n;
+}
+
 static inline void au_ninodes_inc(struct super_block *sb)
 {
-	atomic_long_inc(&au_sbi(sb)->si_ninodes);
+	percpu_counter_inc(&au_sbi(sb)->si_ninodes);
 }
 
 static inline void au_ninodes_dec(struct super_block *sb)
 {
-	AuDebugOn(!atomic_long_read(&au_sbi(sb)->si_ninodes));
-	atomic_long_dec(&au_sbi(sb)->si_ninodes);
+	percpu_counter_dec(&au_sbi(sb)->si_ninodes);
+}
+
+static inline unsigned long long au_nfiles(struct super_block *sb)
+{
+	s64 n = percpu_counter_sum(&au_sbi(sb)->si_nfiles);
+
+	BUG_ON(n < 0);
+	return n;
 }
 
 static inline void au_nfiles_inc(struct super_block *sb)
 {
-	atomic_long_inc(&au_sbi(sb)->si_nfiles);
+	percpu_counter_inc(&au_sbi(sb)->si_nfiles);
 }
 
 static inline void au_nfiles_dec(struct super_block *sb)
 {
-	AuDebugOn(!atomic_long_read(&au_sbi(sb)->si_nfiles));
-	atomic_long_dec(&au_sbi(sb)->si_nfiles);
+	percpu_counter_dec(&au_sbi(sb)->si_nfiles);
 }
 
 static inline struct au_branch *au_sbr(struct super_block *sb,
