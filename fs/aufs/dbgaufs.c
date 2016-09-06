@@ -256,7 +256,10 @@ void dbgaufs_brs_del(struct super_block *sb, aufs_bindex_t bindex)
 	for (; bindex <= bbot; bindex++) {
 		br = au_sbr(sb, bindex);
 		xi = &br->br_xino;
+		/* debugfs acquires the parent i_mutex */
+		lockdep_off();
 		debugfs_remove(xi->xi_dbgaufs);
+		lockdep_on();
 		xi->xi_dbgaufs = NULL;
 	}
 }
@@ -281,8 +284,11 @@ void dbgaufs_brs_add(struct super_block *sb, aufs_bindex_t bindex)
 		br = au_sbr(sb, bindex);
 		xi = &br->br_xino;
 		AuDebugOn(xi->xi_dbgaufs);
+		/* debugfs acquires the parent i_mutex */
+		lockdep_off();
 		xi->xi_dbgaufs = debugfs_create_file(name, dbgaufs_mode, parent,
 						     sbinfo, &dbgaufs_xino_fop);
+		lockdep_on();
 		/* ignore an error */
 		if (unlikely(!xi->xi_dbgaufs))
 			AuWarn1("failed %s under debugfs\n", name);
