@@ -146,6 +146,19 @@ notrace unsigned int __check_irq_replay(void)
 
 	/* Clear bit 0 which we wouldn't clear otherwise */
 	local_paca->irq_happened &= ~PACA_IRQ_HARD_DIS;
+	if (happened & PACA_IRQ_HARD_DIS) {
+		/*
+		 * We may have missed a decrementer interrupt if hard disabled.
+		 * Check the decrementer register in case we had a rollover
+		 * while hard disabled.
+		 */
+		if (!(happened & PACA_IRQ_DEC)) {
+			if (decrementer_check_overflow()) {
+				local_paca->irq_happened |= PACA_IRQ_DEC;
+				happened |= PACA_IRQ_DEC;
+			}
+		}
+	}
 
 	/*
 	 * Force the delivery of pending soft-disabled interrupts on PS3.
@@ -171,7 +184,7 @@ notrace unsigned int __check_irq_replay(void)
 	 * in case we also had a rollover while hard disabled
 	 */
 	local_paca->irq_happened &= ~PACA_IRQ_DEC;
-	if ((happened & PACA_IRQ_DEC) || decrementer_check_overflow())
+	if (happened & PACA_IRQ_DEC)
 		return 0x900;
 
 	/* Finally check if an external interrupt happened */
@@ -638,6 +651,7 @@ void irq_ctx_init(void)
 	}
 }
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 void do_softirq_own_stack(void)
 {
 	struct thread_info *curtp, *irqtp;
@@ -655,6 +669,7 @@ void do_softirq_own_stack(void)
 	if (irqtp->flags)
 		set_bits(irqtp->flags, &curtp->flags);
 }
+#endif
 
 irq_hw_number_t virq_to_hw(unsigned int virq)
 {

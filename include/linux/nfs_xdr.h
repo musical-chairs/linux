@@ -1199,7 +1199,7 @@ struct nfs41_state_protection {
 
 struct nfs41_exchange_id_args {
 	struct nfs_client		*client;
-	nfs4_verifier			*verifier;
+	nfs4_verifier			verifier;
 	u32				flags;
 	struct nfs41_state_protection	state_protect;
 };
@@ -1490,7 +1490,7 @@ struct nfs_unlinkdata {
 	struct nfs_removeargs args;
 	struct nfs_removeres res;
 	struct dentry *dentry;
-	wait_queue_head_t wq;
+	struct swait_queue_head wq;
 	struct rpc_cred	*cred;
 	struct nfs_fattr dir_attr;
 	long timeout;

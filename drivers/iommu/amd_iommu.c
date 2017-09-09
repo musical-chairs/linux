@@ -1923,10 +1923,10 @@ static int __attach_device(struct iommu_dev_data *dev_data,
 	int ret;
 
 	/*
-	 * Must be called with IRQs disabled. Warn here to detect early
-	 * when its not.
+	 * Must be called with IRQs disabled on a non RT kernel. Warn here to
+	 * detect early when its not.
 	 */
-	WARN_ON(!irqs_disabled());
+	WARN_ON_NONRT(!irqs_disabled());
 
 	/* lock domain */
 	spin_lock(&domain->lock);
@@ -2094,10 +2094,10 @@ static void __detach_device(struct iommu_dev_data *dev_data)
 	struct protection_domain *domain;
 
 	/*
-	 * Must be called with IRQs disabled. Warn here to detect early
-	 * when its not.
+	 * Must be called with IRQs disabled on a non RT kernel. Warn here to
+	 * detect early when its not.
 	 */
-	WARN_ON(!irqs_disabled());
+	WARN_ON_NONRT(!irqs_disabled());
 
 	if (WARN_ON(!dev_data->domain))
 		return;
@@ -4294,6 +4294,7 @@ static int amd_ir_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
 		/* Setting */
 		irte->hi.fields.ga_root_ptr = (pi_data->base >> 12);
 		irte->hi.fields.vector = vcpu_pi_info->vector;
+		irte->lo.fields_vapic.ga_log_intr = 1;
 		irte->lo.fields_vapic.guest_mode = 1;
 		irte->lo.fields_vapic.ga_tag = pi_data->ga_tag;
 
