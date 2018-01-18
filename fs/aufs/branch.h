@@ -12,6 +12,7 @@
 #ifdef __KERNEL__
 
 #include <linux/mount.h>
+#include "dirren.h"
 #include "dynop.h"
 #include "rwsem.h"
 #include "super.h"
@@ -109,6 +110,8 @@ struct au_branch {
 	/* entries under sysfs per mount-point */
 	struct au_brsysfs	br_sysfs[AuBrSysfs_Last];
 #endif
+
+	struct au_dr_br		br_dirren;
 };
 
 /* ---------------------------------------------------------------------- */
@@ -175,7 +178,7 @@ static inline int au_br_test_oflag(int oflag, struct au_branch *br)
 
 	err = 0;
 	exec_flag = oflag & __FMODE_EXEC;
-	if (unlikely(exec_flag && (au_br_mnt(br)->mnt_flags & MNT_NOEXEC)))
+	if (unlikely(exec_flag && path_noexec(&br->br_path)))
 		err = -EACCES;
 
 	return err;

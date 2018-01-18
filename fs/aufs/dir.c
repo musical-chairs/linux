@@ -316,8 +316,8 @@ static int aufs_release_dir(struct inode *inode __maybe_unused,
 	finfo = au_fi(file);
 	fidir = finfo->fi_hdir;
 	if (fidir) {
-		au_sphl_del(&finfo->fi_hlist,
-			    &au_sbi(file->f_path.dentry->d_sb)->si_files);
+		au_hbl_del(&finfo->fi_hlist,
+			   &au_sbi(file->f_path.dentry->d_sb)->si_files);
 		vdir_cache = fidir->fd_vdir_cache; /* lock-free */
 		if (vdir_cache)
 			au_vdir_free(vdir_cache);
@@ -624,9 +624,9 @@ static int sio_test_empty(struct dentry *dentry, struct test_empty_arg *arg)
 	h_dentry = au_h_dptr(dentry, arg->bindex);
 	h_inode = d_inode(h_dentry);
 	/* todo: i_mode changes anytime? */
-	inode_lock_nested(h_inode, AuLsc_I_CHILD);
+	vfsub_inode_lock_shared_nested(h_inode, AuLsc_I_CHILD);
 	err = au_test_h_perm_sio(h_inode, MAY_EXEC | MAY_READ);
-	inode_unlock(h_inode);
+	inode_unlock_shared(h_inode);
 	if (!err)
 		err = do_test_empty(dentry, arg);
 	else {

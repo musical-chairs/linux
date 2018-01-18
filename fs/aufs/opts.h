@@ -34,10 +34,15 @@ struct file;
 #define AuOpt_WARN_PERM		(1 << 12)	/* warn when add-branch */
 #define AuOpt_VERBOSE		(1 << 13)	/* busy inode when del-branch */
 #define AuOpt_DIO		(1 << 14)	/* direct io */
+#define AuOpt_DIRREN		(1 << 15)	/* directory rename */
 
 #ifndef CONFIG_AUFS_HNOTIFY
 #undef AuOpt_UDBA_HNOTIFY
 #define AuOpt_UDBA_HNOTIFY	0
+#endif
+#ifndef CONFIG_AUFS_DIRREN
+#undef AuOpt_DIRREN
+#define AuOpt_DIRREN		0
 #endif
 #ifndef CONFIG_AUFS_SHWH
 #undef AuOpt_SHWH
@@ -163,11 +168,17 @@ struct au_opt {
 #define AuOpts_TRUNC_XIB	(1 << 2)
 #define AuOpts_REFRESH_DYAOP	(1 << 3)
 #define AuOpts_REFRESH_IDOP	(1 << 4)
+#define AuOpts_DR_FLUSHED	(1 << 5)
 #define au_ftest_opts(flags, name)	((flags) & AuOpts_##name)
 #define au_fset_opts(flags, name) \
 	do { (flags) |= AuOpts_##name; } while (0)
 #define au_fclr_opts(flags, name) \
 	do { (flags) &= ~AuOpts_##name; } while (0)
+
+#ifndef CONFIG_AUFS_DIRREN
+#undef AuOpts_DR_FLUSHED
+#define AuOpts_DR_FLUSHED	0
+#endif
 
 struct au_opts {
 	struct au_opt	*opt;
@@ -187,6 +198,7 @@ const char *au_optstr_wbr_copyup(int wbr_copyup);
 const char *au_optstr_wbr_create(int wbr_create);
 
 void au_opts_free(struct au_opts *opts);
+struct super_block;
 int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts);
 int au_opts_verify(struct super_block *sb, unsigned long sb_flags,
 		   unsigned int pending);
