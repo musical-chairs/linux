@@ -66,6 +66,8 @@ struct snd_usb_audio {
 					 */
 
 	struct usb_host_interface *ctrl_intf;	/* the audio control interface */
+
+	void *private;
 };
 
 #define usb_audio_err(chip, fmt, args...) \
