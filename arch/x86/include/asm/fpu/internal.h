@@ -14,6 +14,7 @@
 #include <linux/compat.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/mm.h>
 
 #include <asm/user.h>
 #include <asm/fpu/api.h>
@@ -120,7 +121,7 @@ extern void fpstate_sanitize_xstate(struct fpu *fpu);
 	err;								\
 })
 
-#define kernel_insn_norestore(insn, output, input...)			\
+#define kernel_insn_err(insn, output, input...)				\
 ({									\
 	int err;							\
 	asm volatile("1:" #insn "\n\t"					\
@@ -141,6 +142,22 @@ extern void fpstate_sanitize_xstate(struct fpu *fpu);
 		     _ASM_EXTABLE_HANDLE(1b, 2b, ex_handler_fprestore)	\
 		     : output : input)
 
+static inline int copy_fregs_to_user(struct fregs_state __user *fx)
+{
+	return user_insn(fnsave %[fx]; fwait,  [fx] "=m" (*fx), "m" (*fx));
+}
+
+static inline int copy_fxregs_to_user(struct fxregs_state __user *fx)
+{
+	if (IS_ENABLED(CONFIG_X86_32))
+		return user_insn(fxsave %[fx], [fx] "=m" (*fx), "m" (*fx));
+	else if (IS_ENABLED(CONFIG_AS_FXSAVEQ))
+		return user_insn(fxsaveq %[fx], [fx] "=m" (*fx), "m" (*fx));
+
+	/* See comment in copy_fxregs_to_kernel() below. */
+	return user_insn(rex64/fxsave (%[fx]), "=m" (*fx), [fx] "R" (fx));
+}
+
 static inline void copy_kernel_to_fxregs(struct fxregs_state *fx)
 {
 	if (IS_ENABLED(CONFIG_X86_32)) {
@@ -155,15 +172,23 @@ static inline void copy_kernel_to_fxregs(struct fxregs_state *fx)
 	}
 }
 
-static inline int copy_users_to_fxregs(struct fxregs_state *fx)
+static inline int copy_kernel_to_fxregs_err(struct fxregs_state *fx)
 {
 	if (IS_ENABLED(CONFIG_X86_32))
-		return kernel_insn_norestore(fxrstor %[fx], "=m" (*fx), [fx] "m" (*fx));
+		return kernel_insn_err(fxrstor %[fx], "=m" (*fx), [fx] "m" (*fx));
+	else
+		return kernel_insn_err(fxrstorq %[fx], "=m" (*fx), [fx] "m" (*fx));
+}
+
+static inline int copy_user_to_fxregs(struct fxregs_state __user *fx)
+{
+	if (IS_ENABLED(CONFIG_X86_32))
+		return user_insn(fxrstor %[fx], "=m" (*fx), [fx] "m" (*fx));
 	else if (IS_ENABLED(CONFIG_AS_FXSAVEQ))
-		return kernel_insn_norestore(fxrstorq %[fx], "=m" (*fx), [fx] "m" (*fx));
+		return user_insn(fxrstorq %[fx], "=m" (*fx), [fx] "m" (*fx));
 
 	/* See comment in copy_fxregs_to_kernel() below. */
-	return kernel_insn_norestore(rex64/fxrstor (%[fx]), "=m" (*fx), [fx] "R" (fx),
+	return user_insn(rex64/fxrstor (%[fx]), "=m" (*fx), [fx] "R" (fx),
 			  "m" (*fx));
 }
 
@@ -172,9 +197,14 @@ static inline void copy_kernel_to_fregs(struct fregs_state *fx)
 	kernel_insn(frstor %[fx], "=m" (*fx), [fx] "m" (*fx));
 }
 
-static inline int copy_users_to_fregs(struct fregs_state *fx)
+static inline int copy_kernel_to_fregs_err(struct fregs_state *fx)
 {
-	return kernel_insn_norestore(frstor %[fx], "=m" (*fx), [fx] "m" (*fx));
+	return kernel_insn_err(frstor %[fx], "=m" (*fx), [fx] "m" (*fx));
+}
+
+static inline int copy_user_to_fregs(struct fregs_state __user *fx)
+{
+	return user_insn(frstor %[fx], "=m" (*fx), [fx] "m" (*fx));
 }
 
 static inline void copy_fxregs_to_kernel(struct fpu *fpu)
@@ -352,10 +382,56 @@ static inline void copy_kernel_to_xregs(struct xregs_state *xstate, u64 mask)
 }
 
 /*
+ * Save xstate to user space xsave area.
+ *
+ * We don't use modified optimization because xrstor/xrstors might track
+ * a different application.
+ *
+ * We don't use compacted format xsave area for
+ * backward compatibility for old applications which don't understand
+ * compacted format of xsave area.
+ */
+static inline int copy_xregs_to_user(struct xregs_state __user *buf)
+{
+	int err;
+
+	/*
+	 * Clear the xsave header first, so that reserved fields are
+	 * initialized to zero.
+	 */
+	err = __clear_user(&buf->header, sizeof(buf->header));
+	if (unlikely(err))
+		return -EFAULT;
+
+	stac();
+	XSTATE_OP(XSAVE, buf, -1, -1, err);
+	clac();
+
+	return err;
+}
+
+/*
+ * Restore xstate from user space xsave area.
+ */
+static inline int copy_user_to_xregs(struct xregs_state __user *buf, u64 mask)
+{
+	struct xregs_state *xstate = ((__force struct xregs_state *)buf);
+	u32 lmask = mask;
+	u32 hmask = mask >> 32;
+	int err;
+
+	stac();
+	XSTATE_OP(XRSTOR, xstate, lmask, hmask, err);
+	clac();
+
+	return err;
+}
+
+/*
  * Restore xstate from kernel space xsave area, return an error code instead an
  * exception.
  */
-static inline int copy_users_to_xregs(struct xregs_state *xstate, u64 mask)
+static inline int copy_kernel_to_xregs_err(struct xregs_state *xstate, u64 mask)
 {
 	u32 lmask = mask;
 	u32 hmask = mask >> 32;
@@ -544,7 +620,7 @@ switch_fpu_prepare(struct fpu *old_fpu, int cpu)
 static inline void switch_fpu_finish(struct fpu *new_fpu)
 {
 	struct pkru_state *pk;
-	u32 pkru_val = 0;
+	u32 pkru_val = init_pkru_value;
 
 	if (!static_cpu_has(X86_FEATURE_FPU))
 		return;
@@ -554,9 +630,12 @@ static inline void switch_fpu_finish(struct fpu *new_fpu)
 	if (!cpu_feature_enabled(X86_FEATURE_OSPKE))
 		return;
 
+	/*
+	 * PKRU state is switched eagerly because it needs to be valid before we
+	 * return to userland e.g. for a copy_to_user() operation.
+	 */
 	if (current->mm) {
 		pk = get_xsave_addr(&new_fpu->state.xsave, XFEATURE_PKRU);
-		WARN_ON_ONCE(!pk);
 		if (pk)
 			pkru_val = pk->pkru;
 	}

@@ -196,8 +196,14 @@ void prb_commit(struct prb_handle *h)
 
 	if (changed) {
 		atomic_long_inc(&rb->wq_counter);
-		if (wq_has_sleeper(rb->wq))
+		if (wq_has_sleeper(rb->wq)) {
+#ifdef CONFIG_IRQ_WORK
 			irq_work_queue(rb->wq_work);
+#else
+			if (!in_nmi())
+				wake_up_interruptible_all(rb->wq);
+#endif
+		}
 	}
 }
 

@@ -121,10 +121,8 @@ config ATMEL_CLOCKSOURCE_PIT
 
 config ATMEL_CLOCKSOURCE_TCB
 	bool "Timer Counter Blocks (TCB) support"
-	depends on SOC_AT91RM9200 || SOC_AT91SAM9 || SOC_SAMA5 || COMPILE_TEST
 	default SOC_AT91RM9200 || SOC_AT91SAM9 || SOC_SAMA5
-	depends on !ATMEL_TCLIB
-	select ATMEL_ARM_TCB_CLKSRC
+	select ATMEL_TCB_CLKSRC
 	help
 	  Select this to get a high precision clocksource based on a
 	  TC block with a 5+ MHz base clock rate.

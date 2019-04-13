@@ -370,6 +370,18 @@ static u64 clear_seq;
 #define LOG_LEVEL(v)		((v) & 0x07)
 #define LOG_FACILITY(v)		((v) >> 3 & 0xff)
 
+/* Return log buffer address */
+char *log_buf_addr_get(void)
+{
+	return printk_rb.buffer;
+}
+
+/* Return log buffer size */
+u32 log_buf_len_get(void)
+{
+	return (1 << printk_rb.size_bits);
+}
+
 /* human readable text of the record */
 static char *log_text(const struct printk_log *msg)
 {
@@ -1910,7 +1922,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 }
 EXPORT_SYMBOL(vprintk_emit);
 
-__printf(1, 0) int vprintk_func(const char *fmt, va_list args)
+static __printf(1, 0) int vprintk_func(const char *fmt, va_list args)
 {
 	return vprintk_emit(0, LOGLEVEL_DEFAULT, NULL, 0, fmt, args);
 }
@@ -2684,7 +2696,7 @@ static int __init init_printk_kthread(void)
 }
 late_initcall(init_printk_kthread);
 
-int vprintk_deferred(const char *fmt, va_list args)
+static int vprintk_deferred(const char *fmt, va_list args)
 {
 	return vprintk_emit(0, LOGLEVEL_DEFAULT, NULL, 0, fmt, args);
 }
