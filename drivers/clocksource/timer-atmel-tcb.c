@@ -65,7 +65,7 @@ static u64 tc_get_cycles32(struct clocksource *cs)
 	return readl_relaxed(tcaddr + ATMEL_TC_REG(0, CV));
 }
 
-void tc_clksrc_suspend(struct clocksource *cs)
+static void tc_clksrc_suspend(struct clocksource *cs)
 {
 	int i;
 
@@ -80,7 +80,7 @@ void tc_clksrc_suspend(struct clocksource *cs)
 	bmr_cache = readl(tcaddr + ATMEL_TC_BMR);
 }
 
-void tc_clksrc_resume(struct clocksource *cs)
+static void tc_clksrc_resume(struct clocksource *cs)
 {
 	int i;
 
@@ -360,16 +360,24 @@ static void __init tcb_setup_single_chan(struct atmel_tc *tc, int mck_divisor_id
 	writel(ATMEL_TC_SYNC, tcaddr + ATMEL_TC_BCR);
 }
 
+static const u8 atmel_tcb_divisors[5] = { 2, 8, 32, 128, 0, };
+
+static const struct of_device_id atmel_tcb_of_match[] = {
+	{ .compatible = "atmel,at91rm9200-tcb", .data = (void *)16, },
+	{ .compatible = "atmel,at91sam9x5-tcb", .data = (void *)32, },
+	{ /* sentinel */ }
+};
+
 static int __init tcb_clksrc_init(struct device_node *node)
 {
 	struct atmel_tc tc;
 	struct clk *t0_clk;
 	const struct of_device_id *match;
 	u64 (*tc_sched_clock)(void);
-	int irq;
 	u32 rate, divided_rate = 0;
 	int best_divisor_idx = -1;
 	int clk32k_divisor_idx = -1;
+	int bits;
 	int i;
 	int ret;
 
@@ -389,10 +397,6 @@ static int __init tcb_clksrc_init(struct device_node *node)
 	if (IS_ERR(tc.slow_clk))
 		return PTR_ERR(tc.slow_clk);
 
-	irq = of_irq_get(node->parent, 0);
-	if (irq <= 0)
-		return -EINVAL;
-
 	tc.clk[0] = t0_clk;
 	tc.clk[1] = of_clk_get_by_name(node->parent, "t1_clk");
 	if (IS_ERR(tc.clk[1]))
@@ -401,16 +405,15 @@ static int __init tcb_clksrc_init(struct device_node *node)
 	if (IS_ERR(tc.clk[2]))
 		tc.clk[2] = t0_clk;
 
-	tc.irq[0] = irq;
-	tc.irq[1] = of_irq_get(node->parent, 1);
-	if (tc.irq[1] <= 0)
-		tc.irq[1] = irq;
 	tc.irq[2] = of_irq_get(node->parent, 2);
-	if (tc.irq[2] <= 0)
-		tc.irq[2] = irq;
+	if (tc.irq[2] <= 0) {
+		tc.irq[2] = of_irq_get(node->parent, 0);
+		if (tc.irq[2] <= 0)
+			return -EINVAL;
+	}
 
-	match = of_match_node(atmel_tcb_dt_ids, node->parent);
-	tc.tcb_config = match->data;
+	match = of_match_node(atmel_tcb_of_match, node->parent);
+	bits = (uintptr_t)match->data;
 
 	for (i = 0; i < ARRAY_SIZE(tc.irq); i++)
 		writel(ATMEL_TC_ALL_IRQ, tc.regs + ATMEL_TC_REG(i, IDR));
@@ -423,8 +426,8 @@ static int __init tcb_clksrc_init(struct device_node *node)
 
 	/* How fast will we be counting?  Pick something over 5 MHz.  */
 	rate = (u32) clk_get_rate(t0_clk);
-	for (i = 0; i < ARRAY_SIZE(atmel_tc_divisors); i++) {
-		unsigned divisor = atmel_tc_divisors[i];
+	for (i = 0; i < ARRAY_SIZE(atmel_tcb_divisors); i++) {
+		unsigned divisor = atmel_tcb_divisors[i];
 		unsigned tmp;
 
 		/* remember 32 KiHz clock for later */
@@ -450,7 +453,7 @@ static int __init tcb_clksrc_init(struct device_node *node)
 
 	tcaddr = tc.regs;
 
-	if (tc.tcb_config->counter_width == 32) {
+	if (bits == 32) {
 		/* use apropriate function to read 32 bit counter */
 		clksrc.read = tc_get_cycles32;
 		/* setup ony channel 0 */
@@ -492,7 +495,7 @@ err_unregister_clksrc:
 	clocksource_unregister(&clksrc);
 
 err_disable_t1:
-	if (tc.tcb_config->counter_width != 32)
+	if (bits != 32)
 		clk_disable_unprepare(tc.clk[1]);
 
 err_disable_t0:
