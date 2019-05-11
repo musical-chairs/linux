@@ -195,8 +195,8 @@ retry:
 		aligned_size = offset_in_page(buf_fx) + fpu_user_xstate_size;
 		nr_pages = DIV_ROUND_UP(aligned_size, PAGE_SIZE);
 
-		ret = get_user_pages((unsigned long)buf_fx, nr_pages,
-				     FOLL_WRITE, NULL, NULL);
+		ret = get_user_pages_unlocked((unsigned long)buf_fx, nr_pages,
+					      NULL, FOLL_WRITE);
 		if (ret == nr_pages)
 			goto retry;
 		return -EFAULT;
