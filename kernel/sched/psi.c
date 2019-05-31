@@ -124,7 +124,6 @@
  * sampling of the aggregate task states would be.
  */
 
-#include <linux/sched.h>
 #include "../workqueue_internal.h"
 #include <linux/sched/loadavg.h>
 #include <linux/seq_file.h>
@@ -132,6 +131,7 @@
 #include <linux/seqlock.h>
 #include <linux/cgroup.h>
 #include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/psi.h>
 #include "sched.h"
 
@@ -166,7 +166,6 @@ static struct psi_group psi_system = {
 };
 
 static void psi_update_work(struct work_struct *work);
-static void psi_sched_update_work(struct timer_list *t);
 
 static void group_init(struct psi_group *group)
 {
@@ -175,8 +174,7 @@ static void group_init(struct psi_group *group)
 	for_each_possible_cpu(cpu)
 		seqcount_init(&per_cpu_ptr(group->pcpu, cpu)->seq);
 	group->next_update = sched_clock() + psi_period;
-	INIT_WORK(&group->clock_work, psi_update_work);
-	timer_setup(&group->clock_work_timer, psi_sched_update_work, 0);
+	INIT_DELAYED_WORK(&group->clock_work, psi_update_work);
 	mutex_init(&group->stat_lock);
 }
 
@@ -369,14 +367,14 @@ out:
 	return nonidle_total;
 }
 
-static void psi_sched_delayed_work(struct psi_group *group, unsigned long delay);
-
 static void psi_update_work(struct work_struct *work)
 {
+	struct delayed_work *dwork;
 	struct psi_group *group;
 	bool nonidle;
 
-	group = container_of(work, struct psi_group, clock_work);
+	dwork = to_delayed_work(work);
+	group = container_of(dwork, struct psi_group, clock_work);
 
 	/*
 	 * If there is task activity, periodically fold the per-cpu
@@ -395,7 +393,7 @@ static void psi_update_work(struct work_struct *work)
 		now = sched_clock();
 		if (group->next_update > now)
 			delay = nsecs_to_jiffies(group->next_update - now) + 1;
-		psi_sched_delayed_work(group, delay);
+		schedule_delayed_work(dwork, delay);
 	}
 }
 
@@ -509,20 +507,6 @@ static struct psi_group *iterate_groups(struct task_struct *task, void **iter)
 	return &psi_system;
 }
 
-static void psi_sched_update_work(struct timer_list *t)
-{
-	struct psi_group *group = from_timer(group, t, clock_work_timer);
-
-	schedule_work(&group->clock_work);
-}
-
-static void psi_sched_delayed_work(struct psi_group *group, unsigned long delay)
-{
-	if (!timer_pending(&group->clock_work_timer) &&
-	    !work_pending(&group->clock_work))
-		mod_timer(&group->clock_work_timer, delay);
-}
-
 void psi_task_change(struct task_struct *task, int clear, int set)
 {
 	int cpu = task_cpu(task);
@@ -556,14 +540,10 @@ void psi_task_change(struct task_struct *task, int clear, int set)
 		     wq_worker_last_func(task) == psi_update_work))
 		wake_clock = false;
 
-	if (wake_clock) {
-		if (task_is_ktimer_softirqd(task))
-			wake_clock = false;
-	}
 	while ((group = iterate_groups(task, &iter))) {
 		psi_group_change(group, cpu, clear, set);
-		if (wake_clock)
-			psi_sched_delayed_work(group, PSI_FREQ);
+		if (wake_clock && !delayed_work_pending(&group->clock_work))
+			schedule_delayed_work(&group->clock_work, PSI_FREQ);
 	}
 }
 
@@ -660,8 +640,7 @@ void psi_cgroup_free(struct cgroup *cgroup)
 	if (static_branch_likely(&psi_disabled))
 		return;
 
-	del_timer_sync(&cgroup->psi.clock_work_timer);
-	cancel_work_sync(&cgroup->psi.clock_work);
+	cancel_delayed_work_sync(&cgroup->psi.clock_work);
 	free_percpu(cgroup->psi.pcpu);
 }
 

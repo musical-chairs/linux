@@ -5,36 +5,7 @@
 #include <linux/preempt.h>
 
 #ifdef CONFIG_PREEMPT_RT_FULL
-
-extern void __local_bh_disable(void);
-extern void _local_bh_enable(void);
-extern void __local_bh_enable(void);
-
-static inline void local_bh_disable(void)
-{
-	__local_bh_disable();
-}
-
-static inline void __local_bh_disable_ip(unsigned long ip, unsigned int cnt)
-{
-	__local_bh_disable();
-}
-
-static inline void local_bh_enable(void)
-{
-	__local_bh_enable();
-}
-
-static inline void __local_bh_enable_ip(unsigned long ip, unsigned int cnt)
-{
-	__local_bh_enable();
-}
-
-static inline void local_bh_enable_ip(unsigned long ip)
-{
-	__local_bh_enable();
-}
-
+extern void __local_bh_disable_ip(unsigned long ip, unsigned int cnt);
 #else
 
 #ifdef CONFIG_TRACE_IRQFLAGS
@@ -45,6 +16,7 @@ static __always_inline void __local_bh_disable_ip(unsigned long ip, unsigned int
 	preempt_count_add(cnt);
 	barrier();
 }
+#endif
 #endif
 
 static inline void local_bh_disable(void)
@@ -64,6 +36,5 @@ static inline void local_bh_enable(void)
 {
 	__local_bh_enable_ip(_THIS_IP_, SOFTIRQ_DISABLE_OFFSET);
 }
-#endif
 
 #endif /* _LINUX_BH_H */

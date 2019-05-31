@@ -1211,8 +1211,6 @@ struct task_struct {
 #endif
 #ifdef CONFIG_PREEMPT_RT_BASE
 	struct rcu_head			put_rcu;
-	int				softirq_nestcnt;
-	unsigned int			softirqs_raised;
 #endif
 #ifdef CONFIG_PREEMPT_RT_FULL
 # if defined CONFIG_HIGHMEM || defined CONFIG_X86_32
@@ -1424,7 +1422,6 @@ extern struct pid *cad_pid;
 /*
  * Per process flags
  */
-#define PF_IN_SOFTIRQ		0x00000001      /* Task is serving softirq */
 #define PF_IDLE			0x00000002	/* I am an IDLE thread */
 #define PF_EXITING		0x00000004	/* Getting shut down */
 #define PF_EXITPIDONE		0x00000008	/* PI exit done on shut down */

@@ -216,6 +216,9 @@ static DEFINE_PER_CPU(struct timer_base, timer_bases[NR_BASES]);
 static DEFINE_STATIC_KEY_FALSE(timers_nohz_active);
 static DEFINE_MUTEX(timer_keys_mutex);
 
+static void timer_update_keys(struct work_struct *work);
+static DECLARE_WORK(timer_update_work, timer_update_keys);
+
 #ifdef CONFIG_SMP
 unsigned int sysctl_timer_migration = 1;
 
@@ -232,18 +235,17 @@ static void timers_update_migration(void)
 static inline void timers_update_migration(void) { }
 #endif /* !CONFIG_SMP */
 
-static void timer_update_keys(struct kthread_work *work)
+static void timer_update_keys(struct work_struct *work)
 {
 	mutex_lock(&timer_keys_mutex);
 	timers_update_migration();
 	static_branch_enable(&timers_nohz_active);
 	mutex_unlock(&timer_keys_mutex);
 }
-static DEFINE_KTHREAD_WORK(timer_update_swork, timer_update_keys);
 
 void timers_update_nohz(void)
 {
-	kthread_schedule_work(&timer_update_swork);
+	schedule_work(&timer_update_work);
 }
 
 int timer_migration_handler(struct ctl_table *table, int write,
